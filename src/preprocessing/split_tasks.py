@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""Create deterministic category-stratified train and test task lists."""
-
-from __future__ import annotations
-
 import argparse
 import random
 import sys

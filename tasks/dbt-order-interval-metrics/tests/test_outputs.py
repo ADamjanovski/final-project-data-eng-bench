@@ -273,9 +273,6 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline():
     """Run dbt run."""
-    deps_result = run_cmd("dbt deps")
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps returned {deps_result.returncode}")
 
     result = run_cmd("dbt run --select stg_orders__timeline int_customer_order_gaps customer_order_intervals")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

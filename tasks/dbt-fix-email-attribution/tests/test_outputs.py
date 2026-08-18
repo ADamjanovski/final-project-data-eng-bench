@@ -141,9 +141,6 @@ def require(condition, msg):
 
 
 def run_dbt_pipeline():
-    deps_result = run_cmd(f"cd {get_dbt_project_dir()} && dbt deps", cwd="/app")
-    if deps_result.returncode != 0:
-        print(f"⚠ dbt deps had issues: {deps_result.stderr[:200]}")
 
     result = run_cmd(
         f"cd {get_dbt_project_dir()} && dbt run --select stg_ga__sessions stg_ga__events int_sessions_events_joined",

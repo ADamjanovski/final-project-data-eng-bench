@@ -166,7 +166,6 @@ def run_dbt_pipeline():
     db_type = os.environ.get('DB_TYPE', 'duckdb').lower()
 
     # Build reference model int_sales__orders_enriched
-    run_cmd("dbt deps", cwd=ref_dir)
     if db_type == 'snowflake':
         res = run_cmd("dbt run --select int_sales__orders_enriched", cwd=ref_dir)
     else:

@@ -187,9 +187,6 @@ def run_cmd(cmd, cwd=None):
 
 
 def run_dbt():
-    deps = run_cmd("dbt deps")
-    if deps.returncode != 0:
-        print(f"Warning: dbt deps failed: {deps.returncode}")
     res = run_cmd("dbt run --select fct_order_line_detail")
     assert res.returncode == 0, f"dbt run failed: {res.stderr}"
 

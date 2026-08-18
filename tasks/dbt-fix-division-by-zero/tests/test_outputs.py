@@ -180,9 +180,6 @@ def to_float(val):
 
 def component_1_model_compiles():
     """Model should compile and run without error."""
-    # First run dbt deps to install packages
-    deps_result = run_cmd("dbt deps")
-    require(deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}")
 
     result = run_cmd("dbt run -s rpt_customer_metrics")
     require(result.returncode == 0, f"dbt run failed: {result.stderr}")

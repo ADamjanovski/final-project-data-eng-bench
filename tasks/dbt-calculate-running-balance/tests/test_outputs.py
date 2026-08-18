@@ -171,9 +171,6 @@ def run_cmd(cmd, cwd=PROJECT_DIR):
 
 def run_dbt_pipeline():
     """Run dbt run pipeline."""
-    deps = run_cmd("dbt deps --profiles-dir /app/dbt_project")
-    if deps.returncode != 0:
-        print("dbt deps failed (may be harmless if no packages).")
     result = run_cmd("dbt run --select +rpt_risk_assessment --full-refresh --profiles-dir /app/dbt_project")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"
 

@@ -157,7 +157,6 @@ def run_cmd(cmd: str, cwd: str = None) -> subprocess.CompletedProcess:
 
 
 def run_dbt_pipeline():
-    run_cmd("dbt deps")
     result = run_cmd("dbt run --select stg_lp_transactions stg_lp_programs stg_lp_customers int_loyalty_metrics program_loyalty_summary")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"
 

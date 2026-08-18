@@ -172,9 +172,6 @@ def run_cmd(cmd: str, cwd: str = PROJECT_DIR) -> subprocess.CompletedProcess:
 
 
 def run_dbt_pipeline():
-    deps = run_cmd("dbt deps")
-    if deps.returncode != 0:
-        print("dbt deps failed (may be harmless if no packages).")
 
     db_type = os.environ.get('DB_TYPE', 'duckdb').lower()
 

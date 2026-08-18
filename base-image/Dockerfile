@@ -55,11 +55,15 @@ COPY database/retail.duckdb /app/database/retail.duckdb
 COPY fix_data.py /tmp/fix_data.py
 RUN python3 /tmp/fix_data.py
 
+# Install dbt packages while the image has network access. Task containers do
+# not need network access to resolve packages at run time.
+RUN cd /app/dbt_models_duckdb && dbt deps --profiles-dir . && \
+    cd /app/dbt_models_snowflake && dbt deps --profiles-dir .
+
 # Materialize the dbt staging + intermediate layers in DuckDB so agents can
 # reference stg_* and int_* models out of the box. Without this, only the raw
 # source tables exist.
 RUN cd /app/dbt_models_duckdb && \
-    dbt deps --profiles-dir . && \
     dbt run --profiles-dir . --target dev
 
 # Container lifecycle scripts.

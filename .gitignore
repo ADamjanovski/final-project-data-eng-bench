@@ -1,11 +1,13 @@
 # Harbor run artifacts
 jobs/
 runs/
+traces/
 *.log
 
 # Python
 __pycache__/
 *.pyc
+.env
 .venv/
 .uv/
 

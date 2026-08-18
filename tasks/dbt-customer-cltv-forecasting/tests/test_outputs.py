@@ -172,7 +172,6 @@ def run_dbt_pipeline():
     """
     db_type = os.environ.get('DB_TYPE', 'duckdb').lower()
 
-    run_cmd(f"cd {get_dbt_project_dir()} && dbt deps", cwd="/app")
     res = run_cmd(f"cd {get_dbt_project_dir()} && dbt run --select int_sales__orders_enriched", cwd="/app")
     require(res.returncode == 0, "Failed to build int_sales__orders_enriched")
 

@@ -147,13 +147,11 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline():
     """
-    Run dbt deps and dbt run for the fact_revenue model.
+    Run dbt for the fact_revenue model.
 
     Raises:
-        AssertionError: If dbt deps or dbt run fails.
+        AssertionError: If dbt run fails.
     """
-    deps = run_cmd("dbt deps")
-    assert deps.returncode == 0, f"dbt deps failed: {deps.stderr}"
     res = run_cmd("dbt run --select fact_revenue")
     assert res.returncode == 0, f"dbt run failed: {res.stderr}"
 

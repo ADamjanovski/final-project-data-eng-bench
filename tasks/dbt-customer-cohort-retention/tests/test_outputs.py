@@ -193,9 +193,6 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline():
     """Run dbt run for cohort models."""
-    # Install dependencies first
-    deps_result = run_cmd("dbt deps")
-    assert deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}"
 
     result = run_cmd("dbt run --select +cohort_retention +cohort_revenue +cohort_summary")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

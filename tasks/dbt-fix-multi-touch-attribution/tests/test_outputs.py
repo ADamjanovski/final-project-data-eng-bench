@@ -224,7 +224,6 @@ def _date_diff_days(db_type, start_expr, end_expr):
 def run_dbt_pipeline(db_type):
     """Build reference models, drop existing report table, and run rpt_multi_touch_attribution_fixed."""
     ref_project_dir = get_dbt_project_dir()
-    run_cmd("dbt deps", cwd=ref_project_dir)
     run_cmd(
         "dbt run --select stg_ga__sessions stg_ga__events int_sessions_events_joined",
         cwd=ref_project_dir,

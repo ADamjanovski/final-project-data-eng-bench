@@ -148,10 +148,7 @@ def run_cmd(cmd, cwd=None):
 
 
 def run_dbt_pipeline():
-    """Run dbt deps and dbt run."""
-    deps_result = run_cmd("dbt deps")
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps returned {deps_result.returncode}")
+    """Run dbt."""
 
     result = run_cmd("dbt run --select tier_migration_matrix cohort_tier_progression tier_velocity_metrics tier_migration_revenue_impact tier_retention_risk")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

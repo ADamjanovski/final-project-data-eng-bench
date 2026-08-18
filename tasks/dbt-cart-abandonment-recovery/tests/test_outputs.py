@@ -126,7 +126,6 @@ def require(condition, message):
         raise AssertionError(message)
 
 def component_1_models_compile():
-    run_cmd("dbt deps")
     result = run_cmd("dbt run -s stg_ecommerce__abandoned_carts int_ecommerce__cart_recovery_metrics mart_ecommerce__recovery_scorecard")
     require(result.returncode == 0, "dbt run failed")
     return 1.0

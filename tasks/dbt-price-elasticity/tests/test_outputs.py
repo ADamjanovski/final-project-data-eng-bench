@@ -153,10 +153,8 @@ def run_cmd(cmd, cwd=None):
 
 
 def run_dbt_pipeline():
-    """Run dbt deps + dbt run."""
+    """Run dbt."""
     db_type = os.environ.get('DB_TYPE', 'duckdb').lower()
-    deps_result = run_cmd("dbt deps --profiles-dir .")
-    assert deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}"
     dbt_cmd = "dbt run --profiles-dir . --target dev"
     if db_type == 'snowflake':
         dbt_cmd += " --select +product_elasticity"

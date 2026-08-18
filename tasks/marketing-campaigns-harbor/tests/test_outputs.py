@@ -313,9 +313,6 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline():
     dbt_dir = get_dbt_project_dir()
-    deps_result = run_cmd("dbt deps", cwd=dbt_dir)
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps returned {deps_result.returncode}")
     model_list = " ".join(ALL_MODELS)
     result = run_cmd(f"dbt run --select {model_list}", cwd=dbt_dir)
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

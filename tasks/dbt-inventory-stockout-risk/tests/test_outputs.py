@@ -167,7 +167,7 @@ def require(condition, msg):
 
 
 def run_dbt_pipeline():
-    """Run dbt deps and dbt run."""
+    """Run dbt."""
     # Check project directory exists
     require(os.path.isdir(PROJECT_DIR), f"dbt_project directory missing at {PROJECT_DIR}")
 
@@ -175,9 +175,6 @@ def run_dbt_pipeline():
     for name, path in MODEL_FILES.items():
         require(os.path.isfile(path), f"Missing required model file: {name} at {path}")
 
-    deps = run_cmd("dbt deps")
-    if deps.returncode != 0:
-        print("dbt deps failed (may be harmless if no packages).")
 
     db_type = os.environ.get('DB_TYPE', 'duckdb').lower()
 

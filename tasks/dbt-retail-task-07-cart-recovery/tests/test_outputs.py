@@ -227,7 +227,6 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline():
     """Run dbt for the cart recovery models."""
-    run_cmd("dbt deps")
     selectors = " ".join(MODEL_NAMES)
     result = run_cmd(f"dbt run -s {selectors}")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

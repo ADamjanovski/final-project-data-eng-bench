@@ -144,8 +144,6 @@ def require(condition, message):
 # ============ COMPONENT 1: Models Compile ============
 
 def component_1_models_compile():
-    deps_result = run_cmd("dbt deps")
-    require(deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}")
 
     result = run_cmd("dbt run -s stg_marketing__campaigns int_marketing__attributed_conversions mart_marketing__campaign_roi")
     require(result.returncode == 0, f"dbt run failed: {result.stderr}")

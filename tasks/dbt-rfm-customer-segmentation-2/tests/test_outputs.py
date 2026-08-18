@@ -187,10 +187,7 @@ def run_cmd(cmd, cwd=None):
 
 
 def run_dbt_pipeline():
-    """Run dbt deps and dbt run for RFM models."""
-    deps_result = run_cmd("dbt deps")
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps returned {deps_result.returncode}")
+    """Run dbt for RFM models."""
 
     result = run_cmd("dbt run --select rfm_segments rpt_segment_summary rpt_customer_recommendations rfm_cohort_retention")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

@@ -784,9 +784,6 @@ def mutate_source_data(phase):
 
 def run_dbt():
     mutate_source_data(phase=1)
-    deps = run_cmd("dbt deps")
-    if deps.returncode != 0:
-        print(f"Warning: dbt deps failed: {deps.returncode}")
     res = run_cmd("dbt run --select fact_receivables_aging")
     assert res.returncode == 0, f"dbt run failed: {res.stderr}"
 

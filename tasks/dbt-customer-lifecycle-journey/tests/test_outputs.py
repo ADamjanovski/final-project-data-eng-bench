@@ -137,7 +137,6 @@ def require(condition, message):
 
 def component_1_models_compile():
     """All dbt models compile and run successfully"""
-    run_cmd("dbt deps")
     result = run_cmd("dbt run -s stg_customer__lifecycle_events int_customer__journey_metrics mart_customer__lifecycle_scorecard")
     require(result.returncode == 0, f"dbt run failed: {result.stderr}")
     return 1.0

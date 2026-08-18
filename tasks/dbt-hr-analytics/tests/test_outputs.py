@@ -262,13 +262,6 @@ def run_dbt():
     assert (DBT_PROJECT_PATH / "dbt_project.yml").exists(), "Missing dbt_project.yml"
     assert (DBT_PROJECT_PATH / "profiles.yml").exists(), "Missing profiles.yml"
 
-    # Install dbt package dependencies
-    subprocess.run(
-        ["dbt", "deps", "--profiles-dir", "."],
-        cwd=DBT_PROJECT_PATH,
-        check=False,
-        capture_output=True,
-    )
 
     # Run dbt
     db_type = os.environ.get('DB_TYPE', 'duckdb').lower()

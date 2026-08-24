@@ -2,11 +2,11 @@ from botocore.config import Config as BotocoreConfig
 from strands import Agent
 from strands.models import BedrockModel
 
-from src.config import CONFIG, Config
-from src.environment import PROJECT, TaskEnv
-from src.agents.hooks import InvalidToolCallGuard
+from src.agents.hooks import InvalidToolCallGuard, TextToolCallGuard
 from src.agents.prompts import build_prompt
 from src.agents.tools import build_tools
+from src.config import CONFIG, Config
+from src.environment import TaskEnv
 
 
 def build_agent(
@@ -31,10 +31,11 @@ def build_agent(
             "reasoning_effort": model_config.reasoning_effort,
         },
         streaming=False,
+        service_tier="flex",
     )
 
     prompt = build_prompt(
-        project=PROJECT,
+        project=env.project,
         timeout=int(env.meta["agent"]["timeout_sec"]),
         lessons=lessons,
     )
@@ -43,5 +44,8 @@ def build_agent(
         tools=build_tools(env),
         system_prompt=prompt,
         callback_handler=None,
-        hooks=[InvalidToolCallGuard(config.run.max_invalid_tool_calls)],
+        hooks=[
+            InvalidToolCallGuard(config.run.max_invalid_tool_calls),
+            TextToolCallGuard(config.run.max_text_tool_continuations),
+        ],
     )

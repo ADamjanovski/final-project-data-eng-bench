@@ -10,6 +10,8 @@ model:
 run:
   session_prefix: training-gpt-oss-120b
   max_invalid_tool_calls: 3
+  max_token_continuations: 2
+  max_text_tool_continuations: 2
   output_file: runs/training-gpt-oss-120b/rollouts.jsonl
   transcript_file: transcripts/training-gpt-oss-120b.txt
 

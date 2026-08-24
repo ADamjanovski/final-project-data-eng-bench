@@ -1,7 +1,3 @@
-"""Load agent run configuration."""
-
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +28,8 @@ class ModelConfig:
 class RunConfig:
     session_prefix: str
     max_invalid_tool_calls: int
+    max_token_continuations: int
+    max_text_tool_continuations: int
     output_file: str
     transcript_file: str
 

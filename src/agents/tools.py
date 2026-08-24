@@ -1,11 +1,11 @@
 import json
 import re
-import shlex
 import subprocess
-import time
 from typing import Callable
+
 from strands import tool
-from src.environment import PROJECT, TaskEnv, cut
+
+from src.environment import TaskEnv, cut
 
 MAX_READ_LINES = 500
 MAX_SQL_ROWS = 50
@@ -15,6 +15,13 @@ WRITE_SQL = re.compile(
     r"pragma|install|load|export|import|vacuum)\b",
     re.IGNORECASE,
 )
+
+BLOCKED_PATHS = re.compile(
+    r"(?:\btests?\s*/|/tests?\b|\bsolution\b|\bsolve\.sh\b|\breward\.txt\b)",
+    re.IGNORECASE,
+)
+
+DBT_DEPS = re.compile(r"\bdbt\s+deps\b", re.IGNORECASE)
 
 
 def _tool_call(
@@ -36,51 +43,13 @@ def build_tools(env: TaskEnv) -> list:
     """Build the deliberately small tool set for one baseline rollout."""
 
     @tool
-    def search_project(pattern: str, file_glob: str = "*.sql") -> str:
-        """Search project file paths and contents and return at most 50 matches.
-
-        Args:
-            pattern: A fixed text or regular expression.
-            file_glob: File filter, such as ``*.sql`` or ``models/**/*.sql``.
-        """
-
-        def search() -> str:
-            glob = file_glob.removeprefix("./")
-            match = "-path" if "/" in glob else "-name"
-            value = f"./{glob}" if match == "-path" else glob
-            find_files = (
-                "find . -type f "
-                "! -path './target/*' ! -path './dbt_packages/*' "
-                "! -path './logs/*' ! -path './.git/*' "
-                f"{match} {shlex.quote(value)}"
-            )
-            command = rf"""
-path_matches=$({find_files} -print | grep -E -- {shlex.quote(pattern)} | sed 's#^\./##' | head -n 20)
-content_matches=$({find_files} -print0 | xargs -0 -r grep -nIH -E -- {shlex.quote(pattern)} | sed 's#^\./##' | head -n 30)
-
-if [[ -n "$path_matches" ]]; then
-    printf 'File paths:\n%s\n' "$path_matches"
-fi
-if [[ -n "$content_matches" ]]; then
-    printf 'Content matches:\n%s\n' "$content_matches"
-fi
-"""
-            output = env.shell(command, timeout=120).strip()
-            return output or "No match."
-
-        return _tool_call(
-            env,
-            search,
-        )
-
-    @tool
     def read_file(path: str, start: int = 1, end: int = 0) -> str:
-        """Read up to 300 lines from a project-relative file.
+        """Read up to 500 lines from a project-relative file.
 
         Args:
             path: Project-relative file path.
             start: First line, starting at 1.
-            end: Last line. Zero reads up to 300 lines.
+            end: Last line. Zero reads up to 500 lines.
         """
 
         def read() -> str:
@@ -100,7 +69,7 @@ fi
 
     @tool
     def write_file(path: str, content: str) -> str:
-        """Write a complete project-relative file.
+        """Create a new file or replace the complete file.
 
         Args:
             path: Project-relative destination.
@@ -144,7 +113,7 @@ fi
 
         Args:
             query: A SELECT or WITH query.
-            limit: Maximum returned rows.
+            limit: Maximum returned rows. Must be between 1 and 200. The default is 50.
         """
 
         def query_duckdb() -> str:
@@ -189,14 +158,14 @@ fi
             selector = select.strip()
             if action in {"compile", "run", "test"} and not selector:
                 raise ValueError(f"select is required for dbt {action}")
-            args = ["dbt", action, "--profiles-dir", PROJECT, "--project-dir", PROJECT]
+            args = ["dbt", action, "--profiles-dir", env.project, "--project-dir", env.project,]
             if selector:
                 args.extend(["--select", selector])
             if full_refresh:
                 if action != "run":
                     raise ValueError("full_refresh is only valid for dbt run")
                 args.append("--full-refresh")
-            return env.exec(args, cwd=PROJECT, timeout=600)
+            return env.exec(args, cwd=env.project, timeout=600)
 
         return _tool_call(
             env,
@@ -205,7 +174,9 @@ fi
 
     @tool
     def bash(command: str, timeout: int = 120) -> str:
-        """Run a shell command in the dbt project as an escape hatch.
+        """Run a shell command in the dbt project.
+        Use this for project search and commands that have no dedicated tool.
+        Use the dedicated tools for file changes, SQL queries, and dbt commands.
 
         Args:
             command: Shell command.
@@ -213,28 +184,25 @@ fi
         """
 
         def run_bash() -> str:
+            if BLOCKED_PATHS.search(command):
+                raise ValueError(
+                    "blocked path: tests, solution, solve.sh, and reward files are "
+                    "hidden benchmark data"
+                )
+            if DBT_DEPS.search(command):
+                raise ValueError(
+                    "dbt dependencies are already installed. Do not run dbt deps. "
+                    "Continue with dbt compile or dbt run."
+                )
             return env.shell(command, timeout=max(1, min(timeout, 600))) or "(no output)"
 
         return _tool_call(env, run_bash)
 
-    @tool
-    def time_left() -> str:
-        """Report seconds remaining before the task deadline."""
-
-        def remaining() -> str:
-            if env.deadline is None:
-                return "No deadline is set."
-            return f"{max(0, int(env.deadline - time.monotonic()))} seconds left."
-
-        return _tool_call(env, remaining)
-
     return [
-        search_project,
         read_file,
         write_file,
         edit_file,
         run_sql,
         dbt,
         bash,
-        time_left,
     ]

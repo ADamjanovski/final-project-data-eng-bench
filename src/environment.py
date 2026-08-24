@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PROJECT = "/app/dbt_models_duckdb"
+NEW_PROJECT = "/app/dbt_project"
 DATABASE = "/app/database/retail.duckdb"
 QUERY_HELPER = Path(__file__).with_name("container") / "duckdb_query.py"
 MAX_OUTPUT_CHARS = 12_000
@@ -34,12 +35,14 @@ class TaskEnv:
     container: str | None = None
     deadline: float | None = None
     meta: dict = field(init=False, repr=False)
+    project: str = field(init=False)
 
     def __post_init__(self) -> None:
         task_dir = REPO / "tasks" / self.task
         if not task_dir.is_dir():
             raise ValueError(f"unknown task: {self.task}")
         self.meta = tomllib.loads((task_dir / "task.toml").read_text())
+        self.project = NEW_PROJECT if NEW_PROJECT in self.instruction else PROJECT
 
     @property
     def task_dir(self) -> Path:
@@ -99,7 +102,29 @@ class TaskEnv:
             raise RuntimeError(f"container start failed: {result.stderr.strip()}")
 
         try:
-            for alias in ("/app/dbt_project", "/app/dbt_transforms"):
+            if self.project == NEW_PROJECT:
+                symlink = subprocess.run(
+                    ["docker", "exec", self.container, "test", "-L", NEW_PROJECT],
+                    capture_output=True,
+                    text=True,
+                )
+                if symlink.returncode == 0:
+                    raise RuntimeError(f"new project path is a symlink: {NEW_PROJECT}")
+                mkdir = subprocess.run(
+                    ["docker", "exec", self.container, "mkdir", "-p", NEW_PROJECT],
+                    capture_output=True,
+                    text=True,
+                )
+                if mkdir.returncode != 0:
+                    raise RuntimeError(
+                        f"could not create project {NEW_PROJECT}: {mkdir.stderr.strip()}"
+                    )
+
+            aliases = ["/app/dbt_transforms"]
+            if self.project == PROJECT:
+                aliases.append(NEW_PROJECT)
+
+            for alias in aliases:
                 exists = subprocess.run(
                     ["docker", "exec", self.container, "test", "-e", alias],
                     capture_output=True,
@@ -197,7 +222,7 @@ class TaskEnv:
     def shell(self, command: str, *, timeout: int = 120) -> str:
         return self.exec(
             ["bash", "-lc", command],
-            cwd=PROJECT,
+            cwd=self.project,
             timeout=timeout,
         )
 
@@ -210,7 +235,7 @@ class TaskEnv:
             raise ValueError("use a path relative to the dbt project")
         if any(part == ".." for part in Path(value).parts):
             raise ValueError("path may not leave the dbt project")
-        return f"{PROJECT}/{value.removeprefix('./')}"
+        return f"{self.project}/{value.removeprefix('./')}"
 
     def check_deadline(self) -> None:
         if self.deadline is not None and time.monotonic() >= self.deadline:

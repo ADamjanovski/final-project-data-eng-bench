@@ -1,14 +1,16 @@
 model:
   id: openai.gpt-oss-120b-1:0
   bedrock_region: us-east-1
-  temperature: 0.0
+  temperature: 0.2
   reasoning_effort: medium
-  max_tokens: 8192
+  max_tokens: 16384
   read_timeout: 600
   request_attempts: 3
 
 run:
   session_prefix: baseline-gpt-oss-120b
   max_invalid_tool_calls: 3
-  output_file: runs/baseline-gpt-oss-120b.jsonl
-  transcript_file: transcripts/transcript-gpt-oss-120b.txt
+  max_token_continuations: 2
+  max_text_tool_continuations: 2
+  output_file: runs/baseline-gpt-oss-120b-medium.jsonl
+  transcript_file: transcripts/transcript-gpt-oss-120b-medium.txt

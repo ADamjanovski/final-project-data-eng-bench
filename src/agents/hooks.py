@@ -1,10 +1,17 @@
 import json
-from strands.hooks import AfterToolsEvent, BeforeToolsEvent, HookRegistry
-from src.agents.prompts import invalid_tool_call_error
+import re
+
+from strands.hooks import (
+    AfterInvocationEvent,
+    AfterToolsEvent,
+    BeforeToolsEvent,
+    HookRegistry,
+)
+
+from src.agents.prompts import invalid_tool_call_error, text_tool_call_error
 
 
 TOOL_INPUT_EXAMPLES = {
-    "search_project": {"pattern": "customer_id", "file_glob": "*.sql"},
     "read_file": {"path": "models/example.sql"},
     "write_file": {"path": "models/example.sql", "content": "select 1"},
     "edit_file": {
@@ -15,8 +22,66 @@ TOOL_INPUT_EXAMPLES = {
     "run_sql": {"query": "SELECT * FROM model_name LIMIT 10"},
     "dbt": {"command": "run", "select": "model_name"},
     "bash": {"command": "echo $DB_TYPE"},
-    "time_left": {},
 }
+
+TEXT_TOOL_PATTERNS = (
+    re.compile(
+        r"</?(?:analysis|commentary)\s+to=(?:functions\.)?"
+        r"([A-Za-z_][A-Za-z0-9_-]*)"
+    ),
+    re.compile(r"tool_name=<([A-Za-z_][A-Za-z0-9_-]*)"),
+)
+
+class TextToolCallGuard:
+    """Resume when the model writes a tool call as text."""
+
+    def __init__(self, max_continuations: int) -> None:
+        if max_continuations < 0:
+            raise ValueError("max_continuations may not be negative")
+        self.max_continuations = max_continuations
+        self._continuations = 0
+
+    def register_hooks(self, registry: HookRegistry, **_kwargs: object) -> None:
+        registry.add_callback(AfterInvocationEvent, self.after_invocation)
+
+    def after_invocation(self, event: AfterInvocationEvent) -> None:
+        tool_name = self._text_tool_name(event)
+        if tool_name is None or self._continuations >= self.max_continuations:
+            return
+
+        self._continuations += 1
+        print(
+            f"tool-like text for {tool_name}; continuing "
+            f"{self._continuations}/{self.max_continuations}"
+        )
+        event.resume = text_tool_call_error(tool_name)
+
+    @staticmethod
+    def _text_tool_name(event: AfterInvocationEvent) -> str | None:
+        result = event.result
+        if result is None or result.stop_reason != "end_turn":
+            return None
+
+        content = result.message.get("content", [])
+        if any("toolUse" in block for block in content):
+            return None
+
+        text_parts = [block["text"] for block in content if "text" in block]
+        for block in content:
+            reasoning = block.get("reasoningContent", {})
+            if "text" in reasoning:
+                text_parts.append(reasoning["text"])
+            reasoning_text = reasoning.get("reasoningText", {})
+            if "text" in reasoning_text:
+                text_parts.append(reasoning_text["text"])
+
+        text = "\n".join(text_parts)
+        registered_tools = event.agent.tool_registry.registry
+        for pattern in TEXT_TOOL_PATTERNS:
+            match = pattern.search(text)
+            if match and match.group(1) in registered_tools:
+                return match.group(1)
+        return None
 
 
 class InvalidToolCallGuard:

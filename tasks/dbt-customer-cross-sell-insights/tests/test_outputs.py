@@ -180,7 +180,6 @@ def run_dbt_pipeline():
 
     # Build source models in the backend project only if they don't already exist
     if not _source_tables_exist():
-        run_cmd(f"cd {dbt_backend_dir} && dbt deps")
         res = run_cmd(f"cd {dbt_backend_dir} && dbt run --select int_sales__order_lines int_sales__orders_enriched")
         require(res.returncode == 0, "Failed to build source tables")
     else:

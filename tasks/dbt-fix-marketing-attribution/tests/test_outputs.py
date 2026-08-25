@@ -152,9 +152,6 @@ def run_dbt_pipeline():
     if db_type == 'snowflake':
         # For Snowflake, run reference models from the Snowflake project
         ref_dir = "/app/dbt_models_snowflake"
-        deps_result = run_cmd(f"cd {ref_dir} && dbt deps", cwd=ref_dir)
-        if deps_result.returncode != 0:
-            print(f"dbt deps had issues: {deps_result.stderr[:200]}")
 
         result = run_cmd(
             f"cd {ref_dir} && dbt run --select stg_ga__sessions stg_ga__events int_sessions_events_joined",
@@ -170,9 +167,6 @@ def run_dbt_pipeline():
             require(False, f"dbt run failed: {error_msg[:1000]}")
     else:
         # DuckDB path
-        deps_result = run_cmd("cd /app/dbt_models_duckdb && dbt deps", cwd="/app")
-        if deps_result.returncode != 0:
-            print(f"dbt deps had issues: {deps_result.stderr[:200]}")
 
         result = run_cmd(
             "cd /app/dbt_models_duckdb && dbt run --select stg_ga__sessions stg_ga__events int_sessions_events_joined",

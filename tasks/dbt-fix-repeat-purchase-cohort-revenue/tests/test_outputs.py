@@ -190,7 +190,6 @@ def run_dbt_pipeline():
             require(False, f"dbt run failed: {err[:1500]}")
     else:
         # DuckDB: build staging first, then mart model
-        run_cmd("cd /app/dbt_models_duckdb && dbt deps")
         res_src = run_cmd("cd /app/dbt_models_duckdb && dbt run --select int_sales__orders_enriched")
         require(res_src.returncode == 0, "Failed to build int_sales__orders_enriched")
 

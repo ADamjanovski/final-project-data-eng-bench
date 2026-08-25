@@ -162,10 +162,8 @@ def require(condition: bool, msg: str) -> None:
 def run_dbt_pipeline() -> None:
     """
     Execute the dbt pipeline to build all required models.
-    Runs dbt deps first, then builds all models in correct order.
+    Builds all models in correct order.
     """
-    deps_result = run_cmd("dbt deps")
-    require(deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}")
 
     # Run staging models first
     result = run_cmd(

@@ -162,9 +162,6 @@ def run_dbt_pipeline(db_type):
             print(f"Warning: Could not clean up existing table (may not exist): {e}")
 
     # Build reference models and agent model from the same project
-    deps_result = run_cmd(f"DBT_PROFILES_DIR={project_dir} dbt deps", cwd=project_dir)
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps had issues: {deps_result.stderr[:200]}")
 
     ref_result = run_cmd(
         f"DBT_PROFILES_DIR={project_dir} dbt run --select stg_ga__sessions stg_ga__events int_sessions_events_joined",

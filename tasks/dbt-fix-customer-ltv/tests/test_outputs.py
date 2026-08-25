@@ -143,8 +143,6 @@ def rebuild_model():
     so it would award full reward for zero agent work (pass-by-default).
     Rebuilding forces the verifier to measure the agent's actual model.
     """
-    deps = run_cmd("dbt deps")
-    assert deps.returncode == 0, f"dbt deps failed:\n{deps.stdout}\n{deps.stderr}"
     run = run_cmd("dbt run --select dim_customers")
     assert run.returncode == 0, f"dbt run failed:\n{run.stdout}\n{run.stderr}"
 

@@ -328,15 +328,6 @@ def run_dbt():
     assert (DBT_PROJECT_PATH / "dbt_project.yml").exists(), "Missing dbt_project.yml"
     assert (DBT_PROJECT_PATH / "profiles.yml").exists(), "Missing profiles.yml"
 
-    # Install dbt package dependencies
-    deps_result = subprocess.run(
-        ["dbt", "deps", "--profiles-dir", "."],
-        cwd=str(DBT_PROJECT_PATH),
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    assert deps_result.returncode == 0, f"dbt deps failed:\n{deps_result.stdout}\n{deps_result.stderr}"
 
     # Build only the models required for this task
     result = subprocess.run(

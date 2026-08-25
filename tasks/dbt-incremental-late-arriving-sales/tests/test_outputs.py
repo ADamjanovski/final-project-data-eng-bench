@@ -156,9 +156,6 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline(full_refresh=False):
     """Run dbt pipeline."""
-    deps_result = run_cmd("dbt deps")
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps returned {deps_result.returncode}")
 
     cmd = "dbt run --select order_version_history incremental_daily_sales channel_latency_analysis revenue_reconciliation_waterfall late_arrival_metrics order_data_quality daily_sales_summary"
     if full_refresh:

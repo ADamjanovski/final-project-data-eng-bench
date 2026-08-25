@@ -235,7 +235,7 @@ def verify_structure() -> None:
 
 
 def run_dbt_pipeline(reset_db: bool = False) -> None:
-    """Run dbt deps/seed/run end-to-end and verify idempotency.
+    """Run dbt seed/run end-to-end and verify idempotency.
 
     The second dbt run checks that models can be rebuilt without errors
     and no state leaks across runs. Uses --select for explicit model selection.
@@ -245,11 +245,6 @@ def run_dbt_pipeline(reset_db: bool = False) -> None:
 
     sync_private_seeds()
 
-    run_cmd([
-        "dbt", "deps",
-        "--project-dir", str(PROJECT_DIR),
-        "--profiles-dir", str(PROJECT_DIR),
-    ])
 
     run_cmd([
         "dbt", "seed",
@@ -280,7 +275,7 @@ def run_dbt_pipeline(reset_db: bool = False) -> None:
 
 
 def ensure_dbt_packages_installation() -> None:
-    """Ensure the dbt_utils package was installed by dbt deps."""
+    """Ensure the dbt_utils package is installed."""
     require(
         (PROJECT_DIR / "dbt_packages" / "dbt_utils").is_dir(),
         "dbt_utils package failed to install",

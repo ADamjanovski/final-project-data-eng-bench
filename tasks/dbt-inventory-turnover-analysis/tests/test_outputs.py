@@ -141,10 +141,6 @@ def run_dbt_pipeline():
 
     # Build required staging models from reference project
     # Set DBT_PROFILES_DIR so dbt can find profiles.yml written by solve.sh
-    run_cmd(
-        f"cd {ref_project_dir} && DBT_PROFILES_DIR={ref_project_dir} dbt deps",
-        cwd="/app",
-    )
     res = run_cmd(
         f"cd {ref_project_dir} && DBT_PROFILES_DIR={ref_project_dir} "
         "dbt run --select stg_orders__order_lines stg_orders__orders "

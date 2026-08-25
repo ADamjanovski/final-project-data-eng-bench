@@ -162,7 +162,6 @@ def run_cmd(cmd: str, cwd: str = PROJECT_DIR) -> subprocess.CompletedProcess:
 
 
 def run_dbt_pipeline():
-    result = run_cmd("dbt deps || true")
     result = run_cmd("dbt run")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"
 

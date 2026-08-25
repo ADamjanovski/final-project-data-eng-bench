@@ -168,10 +168,7 @@ def run_cmd(cmd, cwd=None):
 
 
 def run_dbt():
-    """Run dbt deps and dbt run for channel models."""
-    deps_result = run_cmd("dbt deps")
-    if deps_result.returncode != 0:
-        print(f"Warning: dbt deps returned {deps_result.returncode}")
+    """Run dbt for channel models."""
 
     result = run_cmd("dbt run --select stg_orders__channel int_monthly_channel_metrics int_monthly_market_benchmarks monthly_channel_performance")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"

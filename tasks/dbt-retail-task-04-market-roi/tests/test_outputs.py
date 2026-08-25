@@ -251,7 +251,6 @@ def run_cmd(cmd, cwd=None):
 
 def run_dbt_pipeline():
     """Run dbt for the ROI payback model."""
-    run_cmd("dbt deps")
     result = run_cmd(f"dbt run --select {MODEL_NAME} --profiles-dir .")
     assert result.returncode == 0, f"dbt run failed: {result.stderr}"
 

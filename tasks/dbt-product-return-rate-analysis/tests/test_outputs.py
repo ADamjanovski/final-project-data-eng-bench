@@ -191,7 +191,6 @@ def run_dbt_pipeline():
 
     _write_profiles()
 
-    run_cmd(f"cd {get_dbt_project_dir()} && dbt deps", cwd="/app")
     res = run_cmd(
         f"cd {get_dbt_project_dir()} && dbt run --select int_sales__orders_enriched int_sales__order_lines",
         cwd="/app",

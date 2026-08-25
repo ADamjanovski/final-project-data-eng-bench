@@ -168,8 +168,6 @@ def require(condition, message):
 
 def component_1_models_compile():
     """Verify all three dbt models compile and run successfully."""
-    deps_result = run_cmd("dbt deps")
-    require(deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}")
 
     result = run_cmd("dbt run -s stg_marketing__email_metrics int_marketing__email_performance mart_marketing__email_scorecard")
     require(result.returncode == 0, f"dbt run failed: {result.stderr}")

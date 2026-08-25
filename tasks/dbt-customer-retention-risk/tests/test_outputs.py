@@ -168,8 +168,6 @@ def require(condition, message):
 # ============ COMPONENT 1: Model Compiles ============
 
 def component_1_model_compiles():
-    deps_result = run_cmd("dbt deps")
-    require(deps_result.returncode == 0, f"dbt deps failed: {deps_result.stderr}")
 
     result = run_cmd("dbt run -s rpt_customer_retention_risk")
     require(result.returncode == 0, f"dbt run failed: {result.stderr}")

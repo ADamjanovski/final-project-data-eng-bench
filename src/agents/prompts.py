@@ -64,7 +64,16 @@ Do not repeat completed work.
 LESSON_BLOCK = """\
 
 LEARNED EXPERIENCE
-Use only lessons relevant to this ticket.
+These lessons are checks from earlier rollouts. Use only lessons relevant to \
+this ticket.
+
+For each relevant lesson:
+1. Check whether its trigger is present.
+2. Apply its action when the trigger is present.
+3. Verify the result before you finish.
+
+The ticket has priority when a lesson conflicts with the ticket. Do not ignore \
+a relevant lesson without evidence.
 
 {lessons}
 """

@@ -16,9 +16,9 @@ run:
   transcript_file: transcripts/training-gpt-oss-120b.txt
 
 training:
-  epochs: 3
-  rollouts_per_task: 3
+  epochs: 2
+  rollouts_per_task: 2
+  tasks_per_batch: 3
   seed: 42
   experience_temperature: 0.0
-  small_notebook_threshold: 40
   max_lessons_per_task: 3

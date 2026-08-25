@@ -6,9 +6,11 @@ from strands import Agent
 from strands.types.exceptions import EventLoopException, MaxTokensReachedException
 
 from src.agents.agents import build_agent
+from src.agents.hooks import find_text_tool
 from src.agents.prompts import (
     SERVICE_UNAVAILABLE_CONTINUATION,
     TOKEN_LIMIT_CONTINUATION,
+    text_tool_call_error,
 )
 from src.config import CONFIG, Config
 from src.environment import REPO, TaskEnv
@@ -17,6 +19,12 @@ FAILURE_LINE = re.compile(
     r"FAIL:|FAILED |ERROR |^[ \t]*E[ \t]+|AssertionError|Compilation Error|"
     r"Parser Error|Runtime Error|Catalog Error|Binder Error|Test results:|FAILURE:"
 )
+FAILURE_DETAIL = re.compile(
+    r"FAIL:|^[ \t]*E[ \t]+|AssertionError|Compilation Error|Parser Error|"
+    r"Runtime Error|Catalog Error|Binder Error"
+)
+FAILURE_SUMMARY = re.compile(r"Test results:|FAILURE:")
+
 
 @dataclass
 class Rollout:
@@ -34,14 +42,34 @@ class Rollout:
 
 
 def summarize_verifier_log(verifier_log: str) -> str | None:
-    lines = [
-        line.strip()
-        for line in verifier_log.splitlines()
-        if FAILURE_LINE.search(line)
-    ]
-    if not lines:
+    details = []
+    summaries = []
+    headers = []
+    for raw_line in verifier_log.splitlines():
+        line = raw_line.strip()
+        if FAILURE_DETAIL.search(raw_line):
+            details.append(line)
+        elif FAILURE_SUMMARY.search(raw_line):
+            summaries.append(line)
+        elif FAILURE_LINE.search(raw_line):
+            headers.append(line)
+
+    if not details and not summaries and not headers:
         return None
-    return "\n".join(lines[:40])[:6_000]
+
+    selected = []
+    seen = set()
+    size = 0
+    for line in details + summaries + headers:
+        if not line or line in seen:
+            continue
+        line_size = len(line) + bool(selected)
+        if size + line_size > 6_000:
+            continue
+        selected.append(line)
+        seen.add(line)
+        size += line_size
+    return "\n".join(selected)
 
 
 def parse_test_counts(verifier_log: str) -> dict[str, int]:
@@ -58,17 +86,27 @@ def parse_test_counts(verifier_log: str) -> dict[str, int]:
             "failed": failed_components,
         }
 
+    errors = len(re.findall(r"^ERROR\s+\S+::", verifier_log, re.MULTILINE))
+    if not errors:
+        for line in verifier_log.splitlines():
+            if not re.search(r"\bin \d+(?:\.\d+)?s\b", line):
+                continue
+            match = re.search(r"\b(\d+) errors?\b", line)
+            if match:
+                errors = int(match.group(1))
+
     match = re.search(
         r"Test results:\s*(\d+) passed,\s*(\d+) skipped,\s*(\d+) failed",
         verifier_log,
     )
     if not match:
-        errors = len(re.findall(r"^ERROR\s+\S+::", verifier_log, re.MULTILINE))
         return {"passed": 0, "skipped": 0, "failed": errors}
     passed, skipped, failed = map(int, match.groups())
-    if passed == skipped == failed == 0:
-        failed = len(re.findall(r"^ERROR\s+\S+::", verifier_log, re.MULTILINE))
-    return {"passed": passed, "skipped": skipped, "failed": failed}
+    return {
+        "passed": passed,
+        "skipped": skipped,
+        "failed": failed + errors,
+    }
 
 
 def run_verifier(env: TaskEnv, task: str) -> tuple[int, dict[str, int], str]:
@@ -112,10 +150,33 @@ def run_agent(
         agent = build_agent(env, lessons=lessons, config=config)
         message = env.instruction
         service_retries = 0
+        text_tool_continuations = 0
         while True:
             try:
-                agent(message)
-                return agent
+                result = agent(message)
+                tool_name = find_text_tool(
+                    result.message,
+                    agent.tool_registry.registry,
+                )
+                if tool_name is None:
+                    return agent
+                if (
+                    text_tool_continuations
+                    >= config.run.max_text_tool_continuations
+                ):
+                    rollout.error = (
+                        "agent ended with an unexecuted tool call after "
+                        f"{text_tool_continuations} continuations"
+                    )
+                    return agent
+                env.check_deadline()
+                text_tool_continuations += 1
+                print(
+                    f"{rollout.task}: tool-like text for {tool_name}; continuing "
+                    f"{text_tool_continuations}/"
+                    f"{config.run.max_text_tool_continuations}"
+                )
+                message = text_tool_call_error(tool_name)
             except EventLoopException as exc:
                 response = getattr(exc.original_exception, "response", {})
                 error_code = response.get("Error", {}).get("Code")

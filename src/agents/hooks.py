@@ -1,14 +1,14 @@
 import json
 import re
+from collections.abc import Collection
 
 from strands.hooks import (
-    AfterInvocationEvent,
     AfterToolsEvent,
     BeforeToolsEvent,
     HookRegistry,
 )
 
-from src.agents.prompts import invalid_tool_call_error, text_tool_call_error
+from src.agents.prompts import invalid_tool_call_error
 
 
 TOOL_INPUT_EXAMPLES = {
@@ -32,56 +32,47 @@ TEXT_TOOL_PATTERNS = (
     re.compile(r"tool_name=<([A-Za-z_][A-Za-z0-9_-]*)"),
 )
 
-class TextToolCallGuard:
-    """Resume when the model writes a tool call as text."""
+TEXT_TOOL_FIELDS = {
+    "edit_file": ("path", "old_string", "new_string"),
+    "write_file": ("path", "content"),
+    "run_sql": ("query",),
+}
 
-    def __init__(self, max_continuations: int) -> None:
-        if max_continuations < 0:
-            raise ValueError("max_continuations may not be negative")
-        self.max_continuations = max_continuations
-        self._continuations = 0
 
-    def register_hooks(self, registry: HookRegistry, **_kwargs: object) -> None:
-        registry.add_callback(AfterInvocationEvent, self.after_invocation)
-
-    def after_invocation(self, event: AfterInvocationEvent) -> None:
-        tool_name = self._text_tool_name(event)
-        if tool_name is None or self._continuations >= self.max_continuations:
-            return
-
-        self._continuations += 1
-        print(
-            f"tool-like text for {tool_name}; continuing "
-            f"{self._continuations}/{self.max_continuations}"
-        )
-        event.resume = text_tool_call_error(tool_name)
-
-    @staticmethod
-    def _text_tool_name(event: AfterInvocationEvent) -> str | None:
-        result = event.result
-        if result is None or result.stop_reason != "end_turn":
-            return None
-
-        content = result.message.get("content", [])
-        if any("toolUse" in block for block in content):
-            return None
-
-        text_parts = [block["text"] for block in content if "text" in block]
-        for block in content:
-            reasoning = block.get("reasoningContent", {})
-            if "text" in reasoning:
-                text_parts.append(reasoning["text"])
-            reasoning_text = reasoning.get("reasoningText", {})
-            if "text" in reasoning_text:
-                text_parts.append(reasoning_text["text"])
-
-        text = "\n".join(text_parts)
-        registered_tools = event.agent.tool_registry.registry
-        for pattern in TEXT_TOOL_PATTERNS:
-            match = pattern.search(text)
-            if match and match.group(1) in registered_tools:
-                return match.group(1)
+def find_text_tool(message: dict, registered_tools: Collection[str]) -> str | None:
+    """Identify a tool call that the model returned as plain text."""
+    content = message.get("content", [])
+    if any("toolUse" in block for block in content):
         return None
+
+    text_parts = []
+    for block in content:
+        if isinstance(block.get("text"), str):
+            text_parts.append(block["text"])
+        reasoning = block.get("reasoningContent")
+        if not isinstance(reasoning, dict):
+            continue
+        if isinstance(reasoning.get("text"), str):
+            text_parts.append(reasoning["text"])
+        reasoning_text = reasoning.get("reasoningText")
+        if isinstance(reasoning_text, str):
+            text_parts.append(reasoning_text)
+        elif isinstance(reasoning_text, dict) and isinstance(
+            reasoning_text.get("text"), str
+        ):
+            text_parts.append(reasoning_text["text"])
+
+    text = "\n".join(text_parts)
+    for pattern in TEXT_TOOL_PATTERNS:
+        match = pattern.search(text)
+        if match and match.group(1) in registered_tools:
+            return match.group(1)
+    for tool_name, fields in TEXT_TOOL_FIELDS.items():
+        if tool_name in registered_tools and all(
+            f'"{field}"' in text for field in fields
+        ):
+            return tool_name
+    return None
 
 
 class InvalidToolCallGuard:

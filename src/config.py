@@ -38,9 +38,9 @@ class RunConfig:
 class TrainingConfig:
     epochs: int
     rollouts_per_task: int
+    tasks_per_batch: int
     seed: int
     experience_temperature: float
-    small_notebook_threshold: int
     max_lessons_per_task: int
 
 

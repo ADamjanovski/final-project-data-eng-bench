@@ -2,7 +2,7 @@ from botocore.config import Config as BotocoreConfig
 from strands import Agent
 from strands.models import BedrockModel
 
-from src.agents.hooks import InvalidToolCallGuard, TextToolCallGuard
+from src.agents.hooks import InvalidToolCallGuard
 from src.agents.prompts import build_prompt
 from src.agents.tools import build_tools
 from src.config import CONFIG, Config
@@ -44,8 +44,5 @@ def build_agent(
         tools=build_tools(env),
         system_prompt=prompt,
         callback_handler=None,
-        hooks=[
-            InvalidToolCallGuard(config.run.max_invalid_tool_calls),
-            TextToolCallGuard(config.run.max_text_tool_continuations),
-        ],
+        hooks=[InvalidToolCallGuard(config.run.max_invalid_tool_calls)],
     )

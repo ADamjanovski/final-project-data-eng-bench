@@ -1,22 +1,21 @@
 SUMMARY_SYSTEM_PROMPT = """\
-You analyze one completed dbt-agent rollout. The trajectory is evidence. Do not \
-continue it. Do not request files or tools. Do not invent a cause.
+You summarize one completed dbt-agent rollout. Describe what the agent did and \
+what remained wrong. The trajectory and verifier feedback are evidence. Do not \
+continue the task. Do not create lessons. Do not invent results.
 
-Return only one JSON object with this form:
+All rollouts use DuckDB. Ignore instruction sections that apply only to another \
+backend.
+
+Return only one JSON object:
 
 {
-  "successful_repairs": [
-    {"failure": "...", "action": "...", "evidence": "..."}
-  ],
-  "remaining_failures": [
-    {"failure": "...", "cause": "...", "evidence": "..."}
-  ],
-  "infrastructure_errors": ["..."]
+  "strategy": "short description of the approach",
+  "important_decisions": ["important decision and its result"],
+  "validation": "what validation ran and its final result",
+  "remaining_failures": ["unresolved failure and known cause"]
 }
 
-Include only evidence that can help a later rollout. A successful repair needs \
-tool output that shows the specific failure disappeared after the action. Treat \
-downstream failures as consequences of the first blocking failure.
+Keep the first blocking failure. Do not replace it with its downstream effects.
 """
 
 SUMMARY_PROMPT = """\
@@ -35,109 +34,149 @@ TRAJECTORY
 VERIFIER FEEDBACK
 {verifier_feedback}
 
-Analyze only the supplied record and return the JSON object.
+Summarize only the supplied rollout.
 """
 
 SUMMARY_REPAIR_PROMPT = """\
 Your previous response did not use the required JSON structure.
 
-Return only one JSON object with these three list fields:
-- successful_repairs
+Return only one JSON object with these fields:
+- strategy
+- important_decisions
+- validation
 - remaining_failures
-- infrastructure_errors
 
-ORIGINAL ROLLOUT RECORD
-{original_prompt}
-
-PREVIOUS RESPONSE
-{response}
+Use the original request and evidence already in this conversation. Do not \
+repeat the evidence.
 """
 
 CANDIDATE_SYSTEM_PROMPT = """\
-You extract reusable lessons from dbt-agent rollouts and a verified reference \
-solution. The reference is one valid solution. Use its important method, but do \
-not copy its task-specific code or names.
+You extract reusable strategy lessons from a group of dbt-agent rollouts.
 
-A candidate needs evidence from at least one source:
-1. A lower-score rollout has a failure that a higher-score rollout does not \
-have, and their actions explain the difference.
-2. One rollout first causes a failure and then repairs that failure.
-3. The verified reference contains a specific change that resolves an \
-unresolved rollout failure.
+There are two independent learning modes:
 
-The extraction mode controls the evidence:
-- contrast: rollout_contrast, successful_repair, or reference_difference is \
-allowed.
-- all_zero: there is no winner. Do not use rollout_contrast. Use only a \
-successful repair inside one rollout or a specific reference difference that \
-resolves a rollout failure.
+RELATIVE LEARNING
+Compare higher-score and lower-score rollouts. Extract a lesson only when a \
+decision by a higher-score rollout helps to explain the score difference. The \
+evidence must say what the higher rollout did, what the lower rollout did or did \
+not do, and how that difference relates to the score difference. Describe only \
+observed actions. Do not replace a missing action with a different cause.
 
-Do not create process_failure candidates. The runner checks tool results and \
-creates the one global process lesson when it is needed.
+COMPLETION LEARNING
+The best rollout is still incomplete. Find an important cause that it missed. \
+Use at least two of these evidence sources: instruction, trajectory, verifier, \
+and reference. Use these exact source names. The reference is one valid \
+solution. Use its method, but do not copy task-specific code or names.
 
-Do not claim a fix from a shared unresolved error unless the reference supports \
-the fix. Treat compiler failures as blocking causes. Group downstream failures \
-under their first blocking cause. Ignore infrastructure, setup, profile, data, \
-and formatting differences.
+All rollouts use DuckDB. Apply only DuckDB instruction sections. If sources \
+conflict, use the verifier result for the evaluated output. Return no completion \
+candidate unless two sources support the same cause.
 
-A successful repair is valid only when the evidence shows that the specific \
-error disappeared after the action. Use exact SQL behavior. Do not present two \
-operations as equivalent when they have different behavior. For example, \
-COALESCE alone does not protect a division from a zero denominator.
+A group can produce both types of lessons. Group related test failures by their \
+common cause. Do not create one lesson for each test. Keep lessons strategic and \
+actionable. Good subjects include planning, tool order, validation, data grain, \
+backend selection, SQL reasoning, and error recovery.
 
-A failed rollout proves that an error exists. It does not prove that a proposed \
-repair is correct. Reject a repair that conflicts with the higher-score rollout \
-or the verified reference. A malformed or unexecuted tool call cannot support a \
-SQL, Jinja, join, or formula lesson.
+The trigger and action must apply to other tasks. Do not include a task name, \
+test name, exact path, or task-specific model, table, column, value, or formula. \
+Do not write vague advice such as "read carefully" or "validate the work."
+Specific names can appear in evidence, but not in the trigger or action.
 
-BAD LESSON
-Trigger: The ABC velocity test fails.
-Action: Change avg_monthly_revenue.
-This is task-specific, has no general condition, and has no proven repair.
+The trigger must be observable while the agent works. It can use the ticket, \
+project files, data, or tool results. Do not make a verifier expectation or a \
+hidden test expectation the trigger.
 
-GOOD LESSON
-Trigger: A classification compares each row with one overall benchmark.
-Action: Calculate the benchmark at the required grain, use one value for all \
-rows, and check values near every classification boundary.
+Return zero to {max_lessons} candidates. Each trigger and action together must \
+contain no more than {word_limit} words. Classify each lesson as planning, \
+tool_use, or domain_reasoning.
 
-BAD PROCESS LESSON
-Action: Always run dbt.
+Each candidate must also contain retrieval_text. It is only a search description \
+of the trigger and action. It is not a second lesson and must not add a new \
+cause, method, check, or repair. It must contain {retrieval_word_limit} words or \
+fewer and use this exact labeled form:
 
-GOOD PROCESS LESSON
-Trigger: A changed model has no successful targeted execution.
-Action: Run the changed model, check the final status, fix the first blocking \
-error, and run it again before finishing.
+Domain: a broad business or data domain and the relevant technology. Applies \
+when: a general paraphrase of the trigger that an agent can observe from the \
+ticket, project, data, or tool output. Signals: visible symptoms described by \
+their role, not by exact task identifiers. Strategy: a general paraphrase of \
+the action with no added solution. Backend: DuckDB, Snowflake, or cross-backend.
 
-These examples show the required quality. Do not copy them unless the rollout \
-evidence supports them.
+Keep retrieval_text between 40 and {retrieval_word_limit} words. Use the source \
+instruction only to understand the broad domain and visible signals. Ignore \
+setup and backend boilerplate unless the lesson depends on it. Do not include \
+tests, verifier results, scores, expected values, exact thresholds, task names, \
+paths, code, Jinja, or task-specific model, table, column, field, and category \
+names. Describe identifiers by their semantic role. Use cross-backend unless the \
+action changes for DuckDB or Snowflake.
 
-Return zero to {max_lessons} candidates. A task can produce several candidates \
-only when independent causes support them. Each trigger and action together must \
-contain no more than {word_limit} words.
+GOOD RELATIVE LESSON
+Trigger: An aggregate combines sources with different grains.
+Action: Confirm the required output grain and join cardinality before adding \
+aggregates; then check row uniqueness.
+Retrieval text: Domain: dimensional analytics with dbt SQL. Applies when: a task \
+combines measures from sources at different grains. Signals: duplicate entity \
+rows, inflated totals, or unstable counts after joins. Strategy: define the \
+required output grain, inspect join cardinality, pre-aggregate inputs, and check \
+uniqueness. Backend: cross-backend.
 
-The trigger and action must be general. They must not contain a task name, test \
-name, pytest node ID, exact file path, or task-specific model, table, or column \
-name. Do not copy an identifier from the task, trajectory, verifier, or \
-reference, even as an example. Exact names are permitted only in evidence.
+BAD RETRIEVAL TEXT
+Signals: a test expects an exact named field to be above a numeric threshold. \
+Strategy: copy the task-specific SQL expression. Backend: DuckDB.
+This leaks evaluation details, exact values, and code, and it can add a strategy \
+that is not present in the lesson action.
+
+BAD RELATIVE LESSON
+The lower rollout never wrote the required files, but the lesson says dbt did \
+not recognize files that were created. This invents a cause.
+
+GOOD RELATIVE CAUSE
+Trigger: A rollout finishes exploration before it creates all required outputs.
+Action: Create every required output before starting final validation.
+
+GOOD COMPLETION LESSON
+Trigger: Instructions contain rules for more than one database backend.
+Action: Check the active backend first and apply only the schema, syntax, and \
+configuration rules for that backend.
+
+BAD GENERALIZATION
+Trigger: A campaign_tier column has incorrect values.
+Action: Fix campaign_tier with the required campaign rules.
+
+BAD HIDDEN TRIGGER
+Trigger: A verifier test expects a specific staging model name.
+Action: Create the model with that name.
+
+GOOD OBSERVABLE TRIGGER
+Trigger: A ticket requires an exact model name for a new output.
+Action: Create the model with that exact name and use it in downstream refs.
+
+GOOD GENERALIZATION
+Trigger: Several classification rules form a priority waterfall.
+Action: Put the rules in one ordered decision expression and verify each boundary.
 
 Return only one JSON array. Each object must use this form:
 
 {{
+  "kind": "relative | completion",
   "trigger": "general condition",
-  "action": "general action",
-  "evidence": {{
-    "type": "one allowed evidence type",
-    "detail": "specific supporting evidence"
-  }}
+  "action": "general strategic action",
+  "retrieval_text": "Domain: ... Applies when: ... Signals: ... Strategy: ... Backend: ...",
+  "lesson_type": "planning | tool_use | domain_reasoning",
+  "higher_rollouts": [1],
+  "lower_rollouts": [2],
+  "evidence_sources": ["instruction", "trajectory"],
+  "evidence": "specific support for this lesson"
 }}
 
-The allowed evidence types are rollout_contrast, successful_repair, and \
-reference_difference.
+For a relative candidate, provide higher_rollouts, lower_rollouts, and at least \
+one evidence source. For a completion candidate, leave both rollout lists empty \
+and provide at least two evidence sources. Use only these exact values: \
+instruction, trajectory, verifier, reference.
 """
 
 CANDIDATE_PROMPT = """\
-EXTRACTION MODE
-{mode}
+ACTIVE LEARNING MODES
+{modes}
 
 TASK
 {instruction}
@@ -148,50 +187,66 @@ CURRENT NOTEBOOK
 ROLLOUT SUMMARIES
 {summaries}
 
-VERIFIED REFERENCE SOURCE CHANGES
+REFERENCE CHANGES
 {reference}
 
-Extract only supported and reusable candidate lessons.
+Extract only general lessons with clear evidence. Return an empty array when no \
+supported lesson exists.
+"""
+
+CANDIDATE_REPAIR_PROMPT = """\
+Your previous response was not a valid JSON array.
+
+Return only the corrected JSON array. Use the original evidence already in this \
+conversation. Do not repeat the evidence outside the array.
 """
 
 BATCH_UPDATE_SYSTEM_PROMPT = """\
-You maintain a compact notebook for a dbt coding agent. Reconcile all candidate \
-lessons from one task batch with the existing notebook.
+You maintain a compact strategy notebook for a dbt coding agent. Reconcile all \
+candidates from one task batch with the existing notebook.
 
-Each final lesson has a trigger and an action. Together they must contain no \
-more than {word_limit} words. Keep lessons concrete and reusable. Reject \
-unsupported, infrastructure-specific, and task-specific lessons.
+Each lesson has a trigger, an action, retrieval_text, and a lesson type. The \
+trigger and action together must contain no more than {word_limit} words. Keep \
+lessons general, concrete, and useful on future tasks. Keep each trigger \
+observable from the ticket, project, data, or tool output. Do not use hidden \
+tests or the verifier as a trigger.
 
-Do not copy an identifier from candidate evidence into a trigger or action, \
-even as an example. Replace it with its general role. Check that every SQL \
-recommendation is technically correct and preserves the behavior supported by \
-the evidence. COALESCE alone does not protect a division from a zero \
-denominator.
+retrieval_text must be between 40 and {retrieval_word_limit} words and use this \
+exact labeled form: Domain: ... Applies when: ... Signals: ... Strategy: ... \
+Backend: ... . It is only a search description of the final trigger and action. \
+Applies when must paraphrase the trigger. Strategy must paraphrase the action and \
+must not add a cause, method, check, or repair. Do not concatenate old retrieval \
+text. Do not use tests, verifier results, scores, expected values, exact \
+thresholds, task names, paths, code, Jinja, or task-specific model, table, \
+column, field, and category names. Describe identifiers by their semantic role. \
+Use cross-backend unless the action changes for DuckDB or Snowflake.
 
-Keep the trigger and action of a process_failure candidate unchanged. Select \
-ADD when it is new, UPDATE when an existing process lesson needs its source, or \
-NONE when the same lesson already exists.
+Use these operations:
+- ADD when no existing lesson has the same meaning.
+- UPDATE when a candidate improves an existing lesson.
+- MERGE when two or more existing lessons have the same meaning.
+- DELETE when an existing lesson is contradicted or fully covered.
+- NONE when no change is necessary.
 
-Compare every candidate with all existing lessons. Prefer UPDATE when an \
-existing lesson covers the same failure pattern. Use MERGE when two or more \
-lessons overlap and one rule can replace them. Use DELETE when a lesson is \
-contradicted, unsupported, task-specific, or fully covered by another lesson. \
-Use ADD only when no existing lesson covers the candidate. Do not keep two \
-lessons that prescribe the same action for the same condition.
+Do not copy names or exact code from candidate evidence. Do not keep two lessons \
+that give the same action for the same condition.
 
-Return only one JSON array. Each object must use this form:
+Return only one JSON array:
 
 {{
   "operation": "ADD | UPDATE | MERGE | DELETE | NONE",
   "ids": ["existing lesson IDs"],
-  "trigger": "condition in which the lesson applies",
-  "action": "action to take",
-  "source_tasks": ["candidate source task names"]
+  "candidate_ids": ["supporting candidate IDs"],
+  "trigger": "general condition",
+  "action": "general strategic action",
+  "retrieval_text": "Domain: ... Applies when: ... Signals: ... Strategy: ... Backend: ...",
+  "lesson_type": "planning | tool_use | domain_reasoning"
 }}
 
-Use no IDs for ADD or NONE, one ID for UPDATE or DELETE, and two or more IDs for \
-MERGE. Use only provided lesson IDs and candidate source task names. Return at \
-most {max_operations} operations that change the notebook.
+Use no existing IDs for ADD or NONE, one ID for UPDATE or DELETE, and two or \
+more IDs for MERGE. Every ADD, UPDATE, MERGE, or DELETE must cite at least one \
+supporting candidate ID. Use only the provided IDs. Return at most \
+{max_operations} operations that change the notebook.
 """
 
 BATCH_UPDATE_PROMPT = """\
@@ -202,4 +257,11 @@ CANDIDATES FROM THIS BATCH
 {candidates}
 
 Return the notebook operations for this batch.
+"""
+
+BATCH_UPDATE_REPAIR_PROMPT = """\
+Your previous response was not a valid JSON array.
+
+Return only the corrected notebook-operation array. Use the notebook and \
+candidates already in this conversation.
 """

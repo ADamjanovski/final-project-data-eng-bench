@@ -8,25 +8,15 @@ from strands.hooks import (
     HookRegistry,
 )
 
-from src.agents.prompts import invalid_tool_call_error
-
-
-TOOL_INPUT_EXAMPLES = {
-    "read_file": {"path": "models/example.sql"},
-    "write_file": {"path": "models/example.sql", "content": "select 1"},
-    "edit_file": {
-        "path": "models/example.sql",
-        "old_string": "old text",
-        "new_string": "new text",
-    },
-    "run_sql": {"query": "SELECT * FROM model_name LIMIT 10"},
-    "dbt": {"command": "run", "select": "model_name"},
-    "bash": {"command": "echo $DB_TYPE"},
-}
+from src.agents.prompts import TOOL_INPUT_EXAMPLES, invalid_tool_call_error
 
 TEXT_TOOL_PATTERNS = (
     re.compile(
         r"</?(?:analysis|commentary)\s+to=(?:functions\.)?"
+        r"([A-Za-z_][A-Za-z0-9_-]*)"
+    ),
+    re.compile(
+        r"<\|channel\|>(?:analysis|commentary)\s+to=(?:functions\.)?"
         r"([A-Za-z_][A-Za-z0-9_-]*)"
     ),
     re.compile(r"tool_name=<([A-Za-z_][A-Za-z0-9_-]*)"),

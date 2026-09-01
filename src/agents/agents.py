@@ -1,5 +1,6 @@
 from botocore.config import Config as BotocoreConfig
 from strands import Agent
+from strands.agent.conversation_manager import SummarizingConversationManager
 from strands.models import BedrockModel
 
 from src.agents.hooks import InvalidToolCallGuard
@@ -18,6 +19,7 @@ def build_agent(
     model = BedrockModel(
         model_id=model_config.id,
         region_name=model_config.bedrock_region,
+        context_window_limit=model_config.context_window_limit,
         boto_client_config=BotocoreConfig(
             read_timeout=model_config.read_timeout,
             retries={
@@ -44,5 +46,37 @@ def build_agent(
         tools=build_tools(env),
         system_prompt=prompt,
         callback_handler=None,
+        conversation_manager=SummarizingConversationManager(
+            proactive_compression=True,
+        ),
         hooks=[InvalidToolCallGuard(config.run.max_invalid_tool_calls)],
+    )
+
+
+def build_experience_agent(system_prompt: str, config: Config) -> Agent:
+    """Build the tool-free agent that extracts and updates experience."""
+    model_config = config.model
+    return Agent(
+        model=BedrockModel(
+            model_id=model_config.id,
+            region_name=model_config.bedrock_region,
+            context_window_limit=model_config.context_window_limit,
+            boto_client_config=BotocoreConfig(
+                read_timeout=model_config.read_timeout,
+                retries={
+                    "mode": "standard",
+                    "total_max_attempts": model_config.request_attempts,
+                },
+            ),
+            max_tokens=model_config.max_tokens,
+            temperature=config.training.experience_temperature,
+            additional_request_fields={
+                "reasoning_effort": model_config.reasoning_effort,
+            },
+            streaming=False,
+            service_tier="flex",
+        ),
+        tools=[],
+        system_prompt=system_prompt,
+        callback_handler=None,
     )

@@ -10,13 +10,9 @@ from src.config import CONFIG, Config
 from src.environment import TaskEnv
 
 
-def build_agent(
-    env: TaskEnv,
-    lessons: str | None = None,
-    config: Config = CONFIG,
-) -> Agent:
+def _build_model(config: Config, temperature: float) -> BedrockModel:
     model_config = config.model
-    model = BedrockModel(
+    return BedrockModel(
         model_id=model_config.id,
         region_name=model_config.bedrock_region,
         context_window_limit=model_config.context_window_limit,
@@ -28,7 +24,7 @@ def build_agent(
             },
         ),
         max_tokens=model_config.max_tokens,
-        temperature=model_config.temperature,
+        temperature=temperature,
         additional_request_fields={
             "reasoning_effort": model_config.reasoning_effort,
         },
@@ -36,13 +32,19 @@ def build_agent(
         service_tier="flex",
     )
 
+
+def build_agent(
+    env: TaskEnv,
+    lessons: str | None = None,
+    config: Config = CONFIG,
+) -> Agent:
     prompt = build_prompt(
         project=env.project,
         timeout=int(env.meta["agent"]["timeout_sec"]),
         lessons=lessons,
     )
     return Agent(
-        model=model,
+        model=_build_model(config, config.model.temperature),
         tools=build_tools(env),
         system_prompt=prompt,
         callback_handler=None,
@@ -55,26 +57,13 @@ def build_agent(
 
 def build_experience_agent(system_prompt: str, config: Config) -> Agent:
     """Build the tool-free agent that extracts and updates experience."""
-    model_config = config.model
+    if config.training is None:
+        raise ValueError("experience agents require a training configuration")
+
     return Agent(
-        model=BedrockModel(
-            model_id=model_config.id,
-            region_name=model_config.bedrock_region,
-            context_window_limit=model_config.context_window_limit,
-            boto_client_config=BotocoreConfig(
-                read_timeout=model_config.read_timeout,
-                retries={
-                    "mode": "standard",
-                    "total_max_attempts": model_config.request_attempts,
-                },
-            ),
-            max_tokens=model_config.max_tokens,
-            temperature=config.training.experience_temperature,
-            additional_request_fields={
-                "reasoning_effort": model_config.reasoning_effort,
-            },
-            streaming=False,
-            service_tier="flex",
+        model=_build_model(
+            config,
+            config.training.experience_temperature,
         ),
         tools=[],
         system_prompt=system_prompt,

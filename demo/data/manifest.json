@@ -1,0 +1,10 @@
+{
+  "tasks": [
+    {
+      "id": "dbt-web-session-analytics",
+      "label": "Web session analytics",
+      "left": "data/dbt-web-session-analytics__c0.json",
+      "right": "data/dbt-web-session-analytics__c2.json"
+    }
+  ]
+}

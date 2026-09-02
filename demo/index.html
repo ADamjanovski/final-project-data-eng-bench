@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0e13">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='13' height='26' x='2' y='3' rx='4' fill='%23ff9b73'/%3E%3Crect width='13' height='26' x='17' y='3' rx='4' fill='%2362d9b2'/%3E%3C/svg%3E">
+  <title>C0 vs C2 — recorded agent replay</title>
+  <style>
+    :root {
+      --bg: #090d12;
+      --surface: #0f151d;
+      --surface-2: #151d27;
+      --surface-3: #1a2430;
+      --text: #edf2f7;
+      --muted: #91a0b0;
+      --muted-2: #657384;
+      --border: #263241;
+      --border-bright: #3b4b5e;
+      --c0: #ff9b73;
+      --c0-soft: rgba(255, 155, 115, .12);
+      --c2: #62d9b2;
+      --c2-soft: rgba(98, 217, 178, .11);
+      --blue: #6cb6ff;
+      --yellow: #f5c76b;
+      --error: #ff786e;
+      --success: #62d9b2;
+      --focus: #a8d1ff;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .38);
+      --radius-sm: 8px;
+      --radius: 14px;
+      --radius-lg: 22px;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 24px;
+      --space-6: 32px;
+      --space-7: 48px;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 52% -30%, rgba(80, 125, 151, .13), transparent 47%),
+        var(--bg);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; }
+    button { color: inherit; }
+    button, select, [tabindex] { outline: none; }
+    button:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+      box-shadow: 0 0 0 3px rgba(168, 209, 255, .24);
+      border-color: var(--focus) !important;
+    }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .46; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+
+    .app-shell { height: 100%; display: grid; grid-template-rows: 58px 1fr; }
+    .topbar {
+      position: relative; z-index: 20; display: grid;
+      grid-template-columns: minmax(250px, 1fr) auto minmax(250px, 1fr);
+      align-items: center; gap: var(--space-4); padding: 0 clamp(16px, 2vw, 32px);
+      background: rgba(9, 13, 18, .94); border-bottom: 1px solid var(--border);
+    }
+    .record-label { display: flex; align-items: center; gap: 11px; color: #b9c4d0; font-size: 13px; font-weight: 600; }
+    .record-mark { width: 19px; height: 19px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+    .record-mark::before, .record-mark::after { content: ""; border-radius: 3px; }
+    .record-mark::before { background: var(--c0); }
+    .record-mark::after { background: var(--c2); }
+    .screen-nav { display: flex; align-items: center; gap: 7px; }
+    .screen-dot {
+      width: 34px; height: 30px; border: 1px solid transparent; border-radius: 9px;
+      color: var(--muted-2); background: transparent; font: 700 12px var(--mono);
+      transition: 160ms ease;
+    }
+    .screen-dot:hover { color: var(--text); background: var(--surface-2); }
+    .screen-dot.active { color: var(--text); background: var(--surface-2); border-color: var(--border-bright); }
+    .screen-dot.done { color: var(--c2); }
+    .task-picker { justify-self: end; display: flex; align-items: center; gap: 9px; }
+    .task-picker label { color: var(--muted-2); font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    select {
+      max-width: 240px; min-height: 34px; color: #c9d3df; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 9px; padding: 0 31px 0 11px;
+    }
+
+    main { min-height: 0; position: relative; }
+    .screen { display: none; height: 100%; animation: screen-in 280ms ease both; }
+    .screen.active { display: flex; }
+    @keyframes screen-in { from { opacity: 0; transform: translateY(5px); } }
+
+    /* Brief */
+    .brief-screen {
+      overflow: auto; flex-direction: column; align-items: center; justify-content: center;
+      padding: clamp(24px, 4.2vh, 54px) clamp(18px, 4vw, 60px);
+    }
+    .brief-wrap { width: min(1180px, 100%); }
+    .eyebrow { margin: 0 0 12px; color: var(--c2); font: 700 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .brief-title { max-width: 850px; margin: 0; font-size: clamp(34px, 4vw, 58px); line-height: 1.02; letter-spacing: -.045em; }
+    .brief-title .muted-line { color: #798899; }
+    .instruction-card {
+      margin-top: clamp(24px, 4vh, 38px); border: 1px solid var(--border-bright);
+      background: #0c1219; border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .instruction-top { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-bottom: 1px solid var(--border); }
+    .avatar {
+      display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px;
+      background: #253141; color: #dbe4ed; font-size: 11px; font-weight: 800;
+    }
+    .instruction-role { color: #c4cfda; font: 700 11px var(--mono); letter-spacing: .08em; }
+    .instruction-body { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; padding: 19px 22px 20px; }
+    .instruction-preview { min-width: 0; }
+    .instruction-preview h2 { margin: 0 0 7px; font-size: clamp(20px, 2vw, 26px); letter-spacing: -.02em; }
+    .instruction-preview p { margin: 0; max-width: 75ch; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .text-button {
+      min-height: 38px; padding: 0; border: 0; border-bottom: 1px solid #526476;
+      background: transparent; color: #c5d4e2; font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .text-button:hover { color: white; border-color: white; }
+    .same-line { margin: 22px 0 15px; color: #c5cfda; font-size: clamp(15px, 1.45vw, 18px); }
+    .condition-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .condition-card {
+      position: relative; min-height: 124px; padding: 18px 20px; overflow: hidden;
+      border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    }
+    .condition-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; }
+    .condition-card.c0::before { background: var(--c0); }
+    .condition-card.c2::before { background: var(--c2); }
+    .condition-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .condition-name { font: 800 18px var(--mono); }
+    .condition-card.c0 .condition-name { color: var(--c0); }
+    .condition-card.c2 .condition-name { color: var(--c2); }
+    .condition-description { margin: 6px 0 17px; color: #d3dbe4; font-size: 14px; }
+    .token-note { color: var(--muted); font: 13px var(--mono); }
+    .token-extra { color: var(--c2); }
+    .brief-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+    .primary-button, .secondary-button, .icon-button {
+      border: 1px solid var(--border-bright); border-radius: 10px; transition: 150ms ease;
+    }
+    .primary-button {
+      min-height: 44px; padding: 0 19px; background: var(--text); color: #0a0e13;
+      border-color: var(--text); font-weight: 800;
+    }
+    .primary-button:hover { transform: translateY(-1px); background: white; }
+    .primary-button svg { width: 14px; height: 14px; margin-left: 9px; vertical-align: -2px; }
+    .secondary-button { min-height: 40px; padding: 0 14px; background: var(--surface-2); color: #d7e0e9; font-weight: 700; }
+    .secondary-button:hover { background: var(--surface-3); border-color: #586b80; }
+
+    /* Race */
+    .race-screen { flex-direction: column; min-height: 0; }
+    .race-toolbar {
+      display: grid; grid-template-columns: auto minmax(280px, 1fr) auto; gap: clamp(14px, 2.4vw, 34px);
+      align-items: center; padding: 10px clamp(16px, 2vw, 30px); border-bottom: 1px solid var(--border);
+      background: #0c1117;
+    }
+    .playback-controls { display: flex; align-items: center; gap: 7px; }
+    .icon-button {
+      display: grid; place-items: center; width: 36px; height: 36px; background: var(--surface); color: #c4d0dc;
+    }
+    .icon-button:hover { background: var(--surface-3); color: white; }
+    .icon-button.primary-control { width: 42px; border-color: #506175; background: #202b38; color: white; }
+    .icon-button svg { width: 15px; height: 15px; fill: currentColor; }
+    .clock-area { min-width: 0; }
+    .clock-row { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 7px; }
+    .clock { font: 700 13px var(--mono); color: #d5dee8; }
+    .clock .slash { color: var(--muted-2); }
+    .chapter-name { color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .timeline { position: relative; height: 15px; }
+    .timeline-track, .timeline-fill { position: absolute; left: 0; top: 6px; height: 3px; border-radius: 3px; }
+    .timeline-track { right: 0; background: #273341; }
+    .timeline-fill { width: 0; background: #b3c3d3; }
+    .beat-button {
+      position: absolute; top: 1px; width: 13px; height: 13px; margin-left: -6px; padding: 0;
+      border: 3px solid #0c1117; border-radius: 50%; background: #526273;
+    }
+    .beat-button:hover, .beat-button.reached { background: var(--blue); transform: scale(1.15); }
+    .speed-control { display: flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .speed-button { min-width: 38px; height: 29px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: 700 11px var(--mono); }
+    .speed-button.active { background: #283545; color: white; }
+    .panes { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; flex: 1; }
+    .pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto 1fr; background: rgba(12, 17, 23, .6); }
+    .pane + .pane { border-left: 1px solid var(--border); }
+    .pane-head { padding: 13px clamp(14px, 1.7vw, 24px) 12px; border-bottom: 1px solid var(--border); background: #0c1219; }
+    .pane-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .pane-title { display: flex; align-items: center; gap: 11px; }
+    .arm-badge {
+      display: grid; place-items: center; min-width: 37px; height: 28px; padding: 0 8px; border-radius: 7px;
+      font: 800 13px var(--mono);
+    }
+    .pane.c0 .arm-badge { color: var(--c0); background: var(--c0-soft); border: 1px solid rgba(255,155,115,.22); }
+    .pane.c2 .arm-badge { color: var(--c2); background: var(--c2-soft); border: 1px solid rgba(98,217,178,.21); }
+    .pane-subtitle { color: #c4ced8; font-size: 13px; font-weight: 650; }
+    .live-dot { display: inline-flex; align-items: center; gap: 7px; color: var(--muted-2); font: 600 10px var(--mono); text-transform: uppercase; }
+    .live-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #536171; }
+    .live-dot.running::before { background: var(--blue); box-shadow: 0 0 0 4px rgba(108,182,255,.11); }
+    .live-dot.finished::before { background: var(--c2); }
+    .pane-metrics { display: flex; gap: 15px; margin-top: 8px; color: var(--muted); font: 600 12px var(--mono); }
+    .pane-metrics strong { color: #dce5ed; font-weight: 700; }
+    .lesson-dock {
+      margin-top: 11px; width: 100%; padding: 10px 12px; text-align: left;
+      border: 1px solid rgba(98,217,178,.24); border-radius: 10px; background: rgba(98,217,178,.055);
+    }
+    .lesson-dock-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .lesson-dock-label { color: var(--c2); font: 800 10px var(--mono); letter-spacing: .1em; }
+    .lesson-count { color: #a5b4c2; font: 700 10px var(--mono); }
+    .lesson-lines { display: grid; gap: 3px; color: #b6c4cf; font-size: 11px; line-height: 1.35; }
+    .lesson-line { display: flex; gap: 7px; min-width: 0; }
+    .lesson-line .mark { flex: 0 0 auto; color: #5c6d7e; }
+    .lesson-line.linked .mark { color: var(--c2); }
+    .lesson-line span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pane-stream { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 9px clamp(10px, 1.4vw, 18px) 34px; scroll-behavior: smooth; }
+    .pane-stream::-webkit-scrollbar, .modal-body::-webkit-scrollbar, .drawer-body::-webkit-scrollbar { width: 9px; height: 9px; }
+    .pane-stream::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb, .drawer-body::-webkit-scrollbar-thumb { background: #334151; border: 2px solid transparent; background-clip: padding-box; border-radius: 8px; }
+    .empty-stream { display: grid; place-items: center; min-height: 180px; color: var(--muted-2); font-size: 12px; }
+    .event-row {
+      display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 12px; align-items: start;
+      width: 100%; padding: 9px 8px; border: 1px solid transparent; border-radius: 9px;
+      background: transparent; text-align: left; animation: event-in 200ms ease both;
+    }
+    .event-row:hover { background: var(--surface); border-color: var(--border); }
+    @keyframes event-in { from { opacity: 0; transform: translateY(5px); } }
+    .tool-label { display: flex; align-items: center; gap: 7px; padding-top: 1px; color: var(--tool-color, #9aacbd); font: 700 10px var(--mono); white-space: nowrap; }
+    .tool-glyph { width: 8px; height: 8px; border-radius: 2px; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 13%, transparent); }
+    .event-main { min-width: 0; }
+    .event-command { color: #d5dee8; font: 12px/1.42 var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .event-result { margin-top: 3px; color: #778697; font: 11px/1.4 var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .event-result.error { color: var(--error); }
+    .event-time { color: #5f6e7e; font: 10px var(--mono); white-space: nowrap; padding-top: 2px; }
+    .event-row.tool-bash { --tool-color: #9eb0c2; }
+    .event-row.tool-read_file { --tool-color: #8abff5; }
+    .event-row.tool-write_file { --tool-color: #c19cf5; }
+    .event-row.tool-edit_file { --tool-color: #f2bb67; }
+    .event-row.tool-run_sql { --tool-color: #66d2c3; }
+    .event-row.tool-dbt { --tool-color: #ff8f74; }
+    .group-row { margin: 4px 0; border: 1px solid rgba(245,199,107,.24); background: rgba(245,199,107,.055); }
+    .group-row .event-command { color: #f0d69d; }
+    .group-progress { color: #d9b965; }
+    .group-children { margin-left: 13px; padding-left: 9px; border-left: 1px solid #4a4231; }
+    .verifier-card {
+      margin: 14px 7px 4px; padding: 17px; border-radius: var(--radius); animation: event-in 320ms ease both;
+    }
+    .verifier-card.pass { border: 1px solid rgba(98,217,178,.34); background: var(--c2-soft); }
+    .verifier-card.fail { border: 1px solid rgba(255,120,110,.33); background: rgba(255,120,110,.08); }
+    .verifier-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .verifier-score { display: block; font: 800 clamp(22px, 2.3vw, 34px) var(--mono); letter-spacing: -.04em; }
+    .verifier-label { display: block; margin-top: 2px; color: var(--muted); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .07em; }
+    .verifier-status { font: 800 11px var(--mono); letter-spacing: .1em; }
+    .pass .verifier-status { color: var(--c2); }
+    .fail .verifier-status { color: var(--error); }
+    .verifier-meta { margin-top: 7px; color: var(--muted); font: 11px var(--mono); }
+    .waiting-line { margin: 9px 7px; color: var(--muted); font: 11px var(--mono); }
+    .waiting-line strong { color: #c9d3dd; }
+    .race-complete {
+      position: absolute; right: 24px; bottom: 20px; z-index: 6; display: none;
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+    }
+    .race-complete.visible { display: inline-flex; align-items: center; }
+
+    /* Verdict */
+    .verdict-screen { overflow-y: auto; padding: clamp(22px, 3.5vh, 44px) clamp(18px, 4vw, 60px); }
+    .verdict-wrap { width: min(1180px, 100%); margin: auto; }
+    .verdict-kicker { color: var(--c2); font: 700 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .verdict-title { margin: 9px 0 22px; font-size: clamp(36px, 4.3vw, 64px); line-height: 1; letter-spacing: -.05em; }
+    .scoreboard { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .score-cell { display: grid; grid-template-columns: auto 1fr; gap: 17px; align-items: center; padding: 17px 21px; background: var(--surface); }
+    .score-cell + .score-cell { border-left: 1px solid var(--border); }
+    .score-big { font: 800 clamp(25px, 3vw, 42px) var(--mono); letter-spacing: -.06em; }
+    .score-label { display: block; margin-top: 2px; color: var(--muted); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .07em; }
+    .score-cell.c0 .score-big { color: var(--c0); }
+    .score-cell.c2 .score-big { color: var(--c2); }
+    .score-word { font-size: 12px; font-weight: 800; letter-spacing: .09em; }
+    .score-meta { color: var(--muted); font: 12px/1.5 var(--mono); }
+    .comparison-table { width: 100%; margin-top: 17px; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #0d131a; }
+    .comparison-table th, .comparison-table td { padding: 13px 19px; text-align: left; border-bottom: 1px solid var(--border); }
+    .comparison-table tr:last-child th, .comparison-table tr:last-child td { border-bottom: 0; }
+    .comparison-table thead th { color: var(--muted); background: #111820; font: 700 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .comparison-table thead th:first-child { width: 25%; }
+    .comparison-table tbody th { color: var(--muted); font-size: 12px; font-weight: 650; }
+    .comparison-table tbody td { font: 650 13px var(--mono); }
+    .comparison-table .bad { color: #ffb092; }
+    .comparison-table .good { color: #85e4c5; }
+    .evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 17px; }
+    .evidence-block { min-width: 0; padding: 18px 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .evidence-label { margin-bottom: 10px; color: var(--muted); font: 700 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+    .error-quote { margin: 0; color: #edc7bd; font: 12px/1.58 var(--mono); white-space: pre-wrap; }
+    .lesson-quote { margin: 0; color: #d9e4e0; font-size: 13px; line-height: 1.55; }
+    .lesson-arrow { display: block; margin-top: 8px; color: var(--c2); }
+    .source-caption { margin: 11px 0 0; color: var(--muted); font-size: 11px; }
+    .verdict-actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 17px; }
+    .annotation { color: var(--muted-2); font: 11px var(--mono); }
+    .button-group { display: flex; gap: 9px; }
+
+    /* Dialogs and drawer */
+    .modal, .drawer { position: fixed; inset: 0; z-index: 100; display: none; }
+    .modal.open, .drawer.open { display: flex; }
+    .backdrop { position: absolute; inset: 0; border: 0; background: rgba(2, 5, 8, .76); backdrop-filter: blur(5px); }
+    .modal { align-items: center; justify-content: center; padding: clamp(14px, 4vw, 54px); }
+    .modal-card {
+      position: relative; width: min(960px, 100%); max-height: 88vh; display: grid; grid-template-rows: auto 1fr;
+      border: 1px solid var(--border-bright); border-radius: var(--radius-lg); background: #0e151d; box-shadow: var(--shadow); overflow: hidden;
+      animation: modal-in 220ms ease both;
+    }
+    @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.99); } }
+    .modal-head, .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .modal-title, .drawer-title { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+    .close-button { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); color: var(--muted); font-size: 20px; }
+    .close-button:hover { color: white; border-color: var(--border-bright); }
+    .modal-body { min-height: 0; overflow: auto; padding: 22px; }
+    .instruction-full { color: #c8d3de; font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+    .drawer { justify-content: flex-end; }
+    .drawer-card {
+      position: relative; width: min(560px, 94vw); height: 100%; display: grid; grid-template-rows: auto 1fr;
+      border-left: 1px solid var(--border-bright); background: #0e151d; box-shadow: var(--shadow); animation: drawer-in 250ms ease both;
+    }
+    @keyframes drawer-in { from { transform: translateX(20px); opacity: 0; } }
+    .drawer-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .drawer-body { min-height: 0; overflow: auto; padding: 14px; }
+    .lesson-card {
+      width: 100%; margin-bottom: 9px; padding: 14px 15px; text-align: left;
+      border: 1px solid var(--border); border-radius: 11px; background: var(--surface); color: inherit;
+    }
+    .lesson-card:hover { border-color: #435569; background: #131b24; }
+    .lesson-card.linked { border-color: rgba(98,217,178,.38); }
+    .lesson-advice { display: grid; grid-template-columns: 15px 1fr; gap: 8px; color: #dce5ec; font-size: 13px; line-height: 1.48; }
+    .lesson-diamond { color: #526170; }
+    .lesson-card.linked .lesson-diamond { color: var(--c2); }
+    .advice-action { display: block; margin-top: 7px; color: #a9d9ca; }
+    .provenance { display: none; margin: 14px 0 0 23px; padding-top: 13px; border-top: 1px solid var(--border); }
+    .lesson-card.expanded .provenance { display: block; }
+    .provenance-title { margin-bottom: 7px; color: var(--c2); font: 800 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+    .provenance-row { margin: 6px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .provenance-row strong { color: #c7d2dc; font-weight: 700; }
+    .retrieval-text { color: #9faebb; font: 10.5px/1.58 var(--mono); }
+    .event-detail-grid { display: grid; gap: 15px; }
+    .detail-block h4 { margin: 0 0 7px; color: var(--muted); font: 700 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .detail-block pre { margin: 0; padding: 13px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: #090e14; color: #c9d4de; font: 11px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .diff-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 13px; }
+    .diff-controls label { color: var(--muted); font-size: 11px; }
+    .diff-view { overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: #090e14; }
+    .diff-line { display: grid; grid-template-columns: 28px 28px 18px minmax(0, 1fr); min-width: 650px; font: 10.5px/1.55 var(--mono); }
+    .diff-line > span { padding: 2px 5px; }
+    .diff-num { color: #4e5e6e; text-align: right; user-select: none; }
+    .diff-sign { color: #667686; text-align: center; }
+    .diff-code { white-space: pre; color: #aebbc8; }
+    .diff-line.add { background: rgba(98,217,178,.08); }
+    .diff-line.add .diff-sign, .diff-line.add .diff-code { color: #89dbbf; }
+    .diff-line.remove { background: rgba(255,120,110,.08); }
+    .diff-line.remove .diff-sign, .diff-line.remove .diff-code { color: #e7a198; }
+    .loading, .load-error { height: 100%; display: grid; place-items: center; color: var(--muted); }
+    .load-error > div { max-width: 600px; padding: 28px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .load-error h1 { margin-top: 0; color: var(--text); }
+    .load-error code { color: var(--c2); }
+
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .app-shell { min-height: 100%; height: auto; grid-template-rows: 58px auto; }
+      main { min-height: calc(100vh - 58px); }
+      .topbar { grid-template-columns: 1fr auto; }
+      .screen-nav { display: none; }
+      .task-picker label { display: none; }
+      .brief-screen { min-height: calc(100vh - 58px); justify-content: flex-start; }
+      .condition-grid, .scoreboard, .evidence-grid { grid-template-columns: 1fr; }
+      .instruction-body { grid-template-columns: 1fr; }
+      .text-button { justify-self: start; }
+      .race-screen { min-height: calc(100vh - 58px); }
+      .race-toolbar { position: sticky; top: 0; z-index: 8; grid-template-columns: auto 1fr; }
+      .speed-control { display: none; }
+      .panes { grid-template-columns: 1fr; }
+      .pane { height: 72vh; }
+      .pane + .pane { border-left: 0; border-top: 1px solid var(--border); }
+      .score-cell + .score-cell { border-left: 0; border-top: 1px solid var(--border); }
+      .verdict-screen { min-height: calc(100vh - 58px); }
+      .comparison-table th, .comparison-table td { padding: 11px 10px; }
+    }
+    @media (max-width: 560px) {
+      .topbar { padding: 0 12px; }
+      .record-label { font-size: 11px; }
+      .task-picker select { width: 42px; color: transparent; padding: 0; }
+      .brief-title { font-size: 36px; }
+      .condition-card { min-height: auto; }
+      .race-toolbar { grid-template-columns: 1fr; gap: 8px; padding: 8px 11px; }
+      .playback-controls { justify-content: center; }
+      .chapter-name { display: none; }
+      .event-row { grid-template-columns: 68px minmax(0, 1fr); }
+      .event-time { display: none; }
+      .verdict-actions { align-items: flex-start; flex-direction: column; }
+      .button-group { width: 100%; }
+      .button-group button { flex: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="record-label"><span class="record-mark" aria-hidden="true"></span><span id="recordLabel">recorded run, replayed at 8x</span></div>
+      <nav class="screen-nav" aria-label="Demo screens">
+        <button class="screen-dot active" data-screen="1" aria-label="Brief">01</button>
+        <button class="screen-dot" data-screen="2" aria-label="Replay">02</button>
+        <button class="screen-dot" data-screen="3" aria-label="Verdict">03</button>
+      </nav>
+      <div class="task-picker"><label for="taskSelect">task</label><select id="taskSelect" aria-label="Select replay task"></select><button class="icon-button" id="fullscreenButton" aria-label="Enter fullscreen" title="Fullscreen"><svg viewBox="0 0 16 16"><path d="M2 2h5v2H4v3H2V2Zm7 0h5v5h-2V4H9V2ZM2 9h2v3h3v2H2V9Zm10 0h2v5H9v-2h3V9Z"/></svg></button></div>
+    </header>
+
+    <main id="main">
+      <div id="loading" class="loading">Preparing recorded run…</div>
+    </main>
+  </div>
+
+  <template id="appTemplate">
+    <section class="screen brief-screen active" data-screen-panel="1" aria-labelledby="briefTitle">
+      <div class="brief-wrap">
+        <p class="eyebrow">One task · two recorded runs</p>
+        <h1 class="brief-title" id="briefTitle">Same model. Same instruction.<br><span class="muted-line">One difference: prior lessons.</span></h1>
+        <article class="instruction-card">
+          <div class="instruction-top"><span class="avatar" aria-hidden="true">U</span><span class="instruction-role">USER</span></div>
+          <div class="instruction-body">
+            <div class="instruction-preview">
+              <h2>Web Session Analytics Platform</h2>
+              <p>Build three dbt models that score website visits, summarize behavior by device, and group visitors into useful segments.</p>
+            </div>
+            <button class="text-button" id="fullInstructionButton">Read full instruction</button>
+          </div>
+        </article>
+        <p class="same-line">C2 receives one extra block at the start. No live calls. No changed task.</p>
+        <div class="condition-grid">
+          <article class="condition-card c0">
+            <div class="condition-head"><span class="condition-name">C0</span><span class="token-note">baseline</span></div>
+            <p class="condition-description">No retrieved lessons</p>
+            <span class="token-note">first prompt: <strong>2,099 tokens</strong></span>
+          </article>
+          <article class="condition-card c2">
+            <div class="condition-head"><span class="condition-name">C2</span><button class="text-button lesson-open-button">Show the 10 lessons</button></div>
+            <p class="condition-description">10 lessons retrieved into context</p>
+            <span class="token-note">first prompt: <strong>2,641 tokens</strong> <span class="token-extra">(+542)</span></span>
+          </article>
+        </div>
+        <div class="brief-actions"><button class="primary-button" id="startButton">Start the run <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.4v11.2L13 8 3 2.4Z"/></svg></button></div>
+      </div>
+    </section>
+
+    <section class="screen race-screen" data-screen-panel="2" aria-label="Side-by-side recorded run">
+      <div class="race-toolbar">
+        <div class="playback-controls">
+          <button class="icon-button" id="prevBeat" aria-label="Previous chapter" title="Previous chapter ["><svg viewBox="0 0 16 16"><path d="M2 3h2v10H2V3Zm2.8 5L13 2.8v10.4L4.8 8Z"/></svg></button>
+          <button class="icon-button" id="prevEvent" aria-label="Previous event" title="Previous event (left arrow)"><svg viewBox="0 0 16 16"><path d="m12.5 2.7-8 5.3 8 5.3V2.7Z"/></svg></button>
+          <button class="icon-button primary-control" id="playButton" aria-label="Play replay"><svg viewBox="0 0 16 16" id="playIcon"><path d="M3 2.4v11.2L13 8 3 2.4Z"/></svg></button>
+          <button class="icon-button" id="nextEvent" aria-label="Next event" title="Next event (right arrow)"><svg viewBox="0 0 16 16"><path d="m3.5 2.7 8 5.3-8 5.3V2.7Z"/></svg></button>
+          <button class="icon-button" id="nextBeat" aria-label="Next chapter" title="Next chapter ]"><svg viewBox="0 0 16 16"><path d="M12 3h2v10h-2V3ZM3 2.8 11.2 8 3 13.2V2.8Z"/></svg></button>
+        </div>
+        <div class="clock-area">
+          <div class="clock-row"><span class="clock"><span id="elapsedClock">00:00</span> <span class="slash">/ 05:30</span></span><span class="chapter-name" id="chapterName">ready</span></div>
+          <div class="timeline" id="timeline"><span class="timeline-track"></span><span class="timeline-fill" id="timelineFill"></span></div>
+        </div>
+        <div class="speed-control" aria-label="Replay speed">
+          <button class="speed-button" data-speed="4">4x</button><button class="speed-button active" data-speed="8">8x</button><button class="speed-button" data-speed="20">20x</button>
+        </div>
+      </div>
+      <div class="panes">
+        <article class="pane c0" aria-labelledby="c0Title">
+          <header class="pane-head">
+            <div class="pane-title-row"><div class="pane-title"><span class="arm-badge">C0</span><span class="pane-subtitle" id="c0Title">no lessons</span></div><span class="live-dot" id="c0State">ready</span></div>
+            <div class="pane-metrics"><span><strong id="c0Tools">0</strong> tools</span><span><strong id="c0Tokens">0</strong> tokens</span></div>
+          </header>
+          <div class="pane-stream" id="c0Stream" aria-live="polite"></div>
+        </article>
+        <article class="pane c2" aria-labelledby="c2Title">
+          <header class="pane-head">
+            <div class="pane-title-row"><div class="pane-title"><span class="arm-badge">C2</span><span class="pane-subtitle" id="c2Title">10 lessons retrieved</span></div><span class="live-dot" id="c2State">ready</span></div>
+            <div class="pane-metrics"><span><strong id="c2Tools">0</strong> tools</span><span><strong id="c2Tokens">0</strong> tokens</span></div>
+            <button class="lesson-dock lesson-open-button" aria-label="Open the 10 retrieved lessons">
+              <span class="lesson-dock-top"><span class="lesson-dock-label">LESSONS</span><span class="lesson-count">10 · expand</span></span>
+              <span class="lesson-lines" id="lessonLines"></span>
+            </button>
+          </header>
+          <div class="pane-stream" id="c2Stream" aria-live="polite"></div>
+        </article>
+      </div>
+      <button class="primary-button race-complete" id="verdictButton">Why C2 passed <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.4v11.2L13 8 3 2.4Z"/></svg></button>
+    </section>
+
+    <section class="screen verdict-screen" data-screen-panel="3" aria-labelledby="verdictTitle">
+      <div class="verdict-wrap">
+        <div class="verdict-kicker">The recorded outcome</div>
+        <h2 class="verdict-title" id="verdictTitle">Why C2 passed</h2>
+        <div class="scoreboard">
+          <div class="score-cell c0"><span><span class="score-big">0 / 22</span><span class="score-label">tests passed</span></span><div><div class="score-word">FAIL</div><div class="score-meta">85 tools · 330.0 s · 1.77M tokens</div></div></div>
+          <div class="score-cell c2"><span><span class="score-big">22 / 22</span><span class="score-label">tests passed</span></span><div><div class="score-word">PASS</div><div class="score-meta">28 tools · 102.8 s · 260,931 tokens</div></div></div>
+        </div>
+        <table class="comparison-table">
+          <thead><tr><th scope="col">Difference</th><th scope="col">C0 · no lessons</th><th scope="col">C2 · 10 lessons</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Data choice</th><td class="bad">Rebuilt visits from raw page events</td><td class="good">Used the ready-made visit data</td></tr>
+            <tr><th scope="row">Output location</th><td class="bad">Wrong nested database location</td><td class="good">Required analytics location</td></tr>
+          </tbody>
+        </table>
+        <div class="evidence-grid">
+          <article class="evidence-block">
+            <div class="evidence-label">C0’s own output · tool call 72</div>
+            <pre class="error-quote">SELECT ... FROM web_analytics.fct_session_quality
+→ Catalog Error: Table with name fct_session_quality does not exist!
+  Did you mean “web_analytics_web_analytics.fct_session_quality”?</pre>
+          </article>
+          <article class="evidence-block">
+            <div class="evidence-label">C2 had this lesson in context</div>
+            <p class="lesson-quote">When models materialize in a default or prefixed schema because the project does not define the target analytics schema<span class="lesson-arrow">→ configure the explicit analytics schema before running dbt</span></p>
+            <p class="source-caption">Learned from dbt-payment-fraud-analysis and 3 other tasks</p>
+          </article>
+        </div>
+        <div class="verdict-actions"><span class="annotation">lesson → edit link: our annotation</span><div class="button-group"><button class="secondary-button" id="restartButton">Replay</button><button class="secondary-button" id="diffButton">View diffs</button><button class="secondary-button lesson-open-button">Sources</button></div></div>
+      </div>
+    </section>
+  </template>
+
+  <div class="modal" id="instructionModal" role="dialog" aria-modal="true" aria-labelledby="instructionModalTitle">
+    <button class="backdrop" data-close="instructionModal" aria-label="Close instruction"></button>
+    <div class="modal-card"><div class="modal-head"><h3 class="modal-title" id="instructionModalTitle">Full task instruction</h3><button class="close-button" data-close="instructionModal" aria-label="Close">×</button></div><div class="modal-body"><div class="instruction-full" id="instructionFull"></div></div></div>
+  </div>
+
+  <aside class="drawer" id="lessonDrawer" role="dialog" aria-modal="true" aria-labelledby="lessonDrawerTitle">
+    <button class="backdrop" data-close="lessonDrawer" aria-label="Close lesson panel"></button>
+    <div class="drawer-card"><div class="drawer-head"><div><h3 class="drawer-title" id="lessonDrawerTitle">10 lessons in context</h3><p class="drawer-subtitle">Select a lesson to inspect its provenance.</p></div><button class="close-button" data-close="lessonDrawer" aria-label="Close">×</button></div><div class="drawer-body" id="lessonCards"></div></div>
+  </aside>
+
+  <div class="modal" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
+    <button class="backdrop" data-close="detailModal" aria-label="Close event details"></button>
+    <div class="modal-card"><div class="modal-head"><h3 class="modal-title" id="detailModalTitle">Event detail</h3><button class="close-button" data-close="detailModal" aria-label="Close">×</button></div><div class="modal-body" id="detailBody"></div></div>
+  </div>
+
+  <div class="modal" id="diffModal" role="dialog" aria-modal="true" aria-labelledby="diffModalTitle">
+    <button class="backdrop" data-close="diffModal" aria-label="Close file diff"></button>
+    <div class="modal-card"><div class="modal-head"><h3 class="modal-title" id="diffModalTitle">C0 → C2 file diff</h3><button class="close-button" data-close="diffModal" aria-label="Close">×</button></div><div class="modal-body"><div class="diff-controls"><label for="diffFile">Shared file</label><select id="diffFile"></select></div><div class="diff-view" id="diffView"></div></div></div>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const state = {
+        manifest: null, left: null, right: null, links: [], screen: 1,
+        time: 0, speed: 8, playing: false, lastFrame: 0,
+        rendered: { c0: -1, c2: -1 }, expandedGroup: false,
+        beats: [], eventTimes: [], reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        lastFocus: null
+      };
+      const $ = (selector, root = document) => root.querySelector(selector);
+      const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+      const escapeHtml = value => String(value ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const formatClock = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+      const compact = value => value >= 1e6 ? `${(value / 1e6).toFixed(value >= 1e7 ? 1 : 2)}M` : value >= 1e3 ? `${Math.round(value / 1e3)}K` : String(value);
+      const activeModal = () => $('.modal.open, .drawer.open');
+
+      async function init() {
+        try {
+          state.manifest = await fetchJson('data/manifest.json');
+          const linksData = await fetchJson('data/links.json');
+          const task = state.manifest.tasks[0];
+          [state.left, state.right] = await Promise.all([fetchJson(task.left), fetchJson(task.right)]);
+          state.links = linksData[task.id]?.c2 || [];
+          $('#main').innerHTML = '';
+          $('#main').append($('#appTemplate').content.cloneNode(true));
+          populateTaskPicker();
+          wireInteractions();
+          prepareReplay();
+          renderLessons();
+          renderDiffPicker();
+          resetReplay();
+        } catch (error) {
+          $('#main').innerHTML = `<div class="load-error"><div><h1>Replay data could not load</h1><p>${escapeHtml(error.message)}</p><p>Serve this folder locally with <code>python3 -m http.server 8080 --directory demo</code>, then open <code>http://localhost:8080</code>.</p></div></div>`;
+        }
+      }
+
+      async function fetchJson(path) {
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
+        return response.json();
+      }
+
+      function populateTaskPicker() {
+        const select = $('#taskSelect');
+        select.innerHTML = state.manifest.tasks.map(task => `<option value="${escapeHtml(task.id)}">${escapeHtml(task.label)}</option>`).join('');
+      }
+
+      function wireInteractions() {
+        $$('.screen-dot').forEach(button => button.addEventListener('click', () => showScreen(Number(button.dataset.screen))));
+        $('#startButton').addEventListener('click', startRace);
+        $('#verdictButton').addEventListener('click', () => showScreen(3));
+        $('#restartButton').addEventListener('click', () => { resetReplay(); showScreen(2); play(); });
+        $('#fullInstructionButton').addEventListener('click', () => { $('#instructionFull').textContent = state.left.instruction; openLayer('instructionModal'); });
+        $$('.lesson-open-button').forEach(button => button.addEventListener('click', () => { renderLessons(); openLayer('lessonDrawer'); }));
+        $('#diffButton').addEventListener('click', () => { renderDiff(); openLayer('diffModal'); });
+        $('#diffFile').addEventListener('change', renderDiff);
+        $('#fullscreenButton').addEventListener('click', toggleFullscreen);
+        $$('[data-close]').forEach(button => button.addEventListener('click', () => closeLayer(button.dataset.close)));
+        $('#playButton').addEventListener('click', togglePlay);
+        $('#prevEvent').addEventListener('click', () => stepEvent(-1));
+        $('#nextEvent').addEventListener('click', () => stepEvent(1));
+        $('#prevBeat').addEventListener('click', () => stepBeat(-1));
+        $('#nextBeat').addEventListener('click', () => stepBeat(1));
+        $$('.speed-button').forEach(button => button.addEventListener('click', () => setSpeed(Number(button.dataset.speed))));
+        $('#c0Stream').addEventListener('click', streamClick);
+        $('#c2Stream').addEventListener('click', streamClick);
+        document.addEventListener('keydown', keyboard);
+      }
+
+      function prepareReplay() {
+        const max = state.left.duration_s;
+        state.beats = [state.left, state.right].flatMap(data => data.events.filter(event => event.beat).map(event => ({...event, arm: data.arm}))).sort((a,b) => a.t - b.t);
+        state.eventTimes = [...new Set([0, ...state.left.events.map(e => e.t), ...state.right.events.map(e => e.t), state.right.duration_s, max])].sort((a,b) => a-b);
+        const timeline = $('#timeline');
+        state.beats.forEach(beat => {
+          const button = document.createElement('button');
+          button.className = 'beat-button';
+          button.style.left = `${beat.t / max * 100}%`;
+          button.title = `${beat.arm.toUpperCase()} · ${beat.beat} · ${formatClock(beat.t)}`;
+          button.setAttribute('aria-label', button.title);
+          button.dataset.time = beat.t;
+          button.addEventListener('click', () => seek(beat.t));
+          timeline.append(button);
+        });
+      }
+
+      function showScreen(number) {
+        state.screen = number;
+        $$('.screen').forEach(panel => panel.classList.toggle('active', Number(panel.dataset.screenPanel) === number));
+        $$('.screen-dot').forEach(dot => {
+          const value = Number(dot.dataset.screen);
+          dot.classList.toggle('active', value === number);
+          dot.classList.toggle('done', value < number);
+          dot.setAttribute('aria-current', value === number ? 'step' : 'false');
+        });
+        if (number !== 2) pause();
+        if (number === 3) seek(state.left.duration_s, false);
+        if (number === 2) renderFrame(true);
+      }
+
+      function startRace() {
+        resetReplay();
+        showScreen(2);
+        play();
+      }
+
+      function resetReplay() {
+        pause();
+        state.time = 0;
+        state.rendered = { c0: -1, c2: -1 };
+        state.expandedGroup = false;
+        $('#c0Stream').innerHTML = '<div class="empty-stream">Waiting for first tool call</div>';
+        $('#c2Stream').innerHTML = '<div class="empty-stream">Lessons loaded · waiting for first tool call</div>';
+        $('#verdictButton').classList.remove('visible');
+        renderFrame(true);
+      }
+
+      function play() {
+        if (state.time >= state.left.duration_s) { showScreen(3); return; }
+        state.playing = true;
+        state.lastFrame = performance.now();
+        updatePlayIcon();
+        requestAnimationFrame(tick);
+      }
+
+      function pause() { state.playing = false; updatePlayIcon(); }
+      function togglePlay() { state.playing ? pause() : play(); }
+
+      function updatePlayIcon() {
+        const icon = $('#playIcon');
+        const button = $('#playButton');
+        if (!icon || !button) return;
+        icon.innerHTML = state.playing ? '<path d="M3 2.5h3.5v11H3v-11Zm6.5 0H13v11H9.5v-11Z"/>' : '<path d="M3 2.4v11.2L13 8 3 2.4Z"/>';
+        button.setAttribute('aria-label', state.playing ? 'Pause replay' : 'Play replay');
+      }
+
+      function tick(now) {
+        if (!state.playing) return;
+        const dt = Math.min((now - state.lastFrame) / 1000, .1);
+        state.lastFrame = now;
+        const next = state.eventTimes.find(time => time > state.time + .001) ?? state.left.duration_s;
+        const gap = Math.max(.001, next - state.time);
+        const rate = Math.max(state.speed, gap / 1.5);
+        state.time = Math.min(state.left.duration_s, state.time + dt * rate);
+        renderFrame();
+        if (state.time >= state.left.duration_s) {
+          pause();
+          $('#verdictButton').classList.add('visible');
+          return;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      function seek(time, rerender = true) {
+        state.time = clamp(Number(time), 0, state.left.duration_s);
+        state.rendered = { c0: -1, c2: -1 };
+        if (rerender) renderFrame(true);
+      }
+
+      function stepEvent(direction) {
+        pause();
+        const epsilon = .02;
+        const choices = direction > 0 ? state.eventTimes.filter(t => t > state.time + epsilon) : state.eventTimes.filter(t => t < state.time - epsilon);
+        seek(direction > 0 ? (choices[0] ?? state.left.duration_s) : (choices.at(-1) ?? 0));
+      }
+
+      function stepBeat(direction) {
+        pause();
+        const epsilon = .02;
+        const choices = direction > 0 ? state.beats.filter(b => b.t > state.time + epsilon) : state.beats.filter(b => b.t < state.time - epsilon);
+        const beat = direction > 0 ? choices[0] : choices.at(-1);
+        seek(beat ? beat.t : (direction > 0 ? state.left.duration_s : 0));
+      }
+
+      function setSpeed(speed) {
+        state.speed = speed;
+        $$('.speed-button').forEach(button => button.classList.toggle('active', Number(button.dataset.speed) === speed));
+        $('#recordLabel').textContent = `recorded run, replayed at ${speed}x`;
+      }
+
+      function renderFrame(force = false) {
+        if (!state.left) return;
+        $('#elapsedClock').textContent = formatClock(state.time);
+        $('#timelineFill').style.width = `${state.time / state.left.duration_s * 100}%`;
+        $$('.beat-button').forEach(button => button.classList.toggle('reached', Number(button.dataset.time) <= state.time));
+        const lastBeat = state.beats.filter(beat => beat.t <= state.time).at(-1);
+        $('#chapterName').textContent = lastBeat ? `${lastBeat.arm.toUpperCase()} · ${lastBeat.beat}` : 'ready';
+        renderPane(state.left, 'c0', force);
+        renderPane(state.right, 'c2', force);
+        renderLessonLines();
+        $('#verdictButton').classList.toggle('visible', state.time >= state.left.duration_s);
+      }
+
+      function renderPane(data, arm, force) {
+        const visible = data.events.filter(event => event.t <= state.time);
+        const lastIndex = visible.at(-1)?.index ?? -1;
+        const finished = state.time >= data.duration_s;
+        const running = state.time > 0 && !finished;
+        const toolCount = finished ? data.totals.tool_calls : visible.length;
+        const tokenCount = finished ? data.tokens.total : (visible.at(-1)?.tokens ?? 0);
+        $(`#${arm}Tools`).textContent = toolCount;
+        $(`#${arm}Tokens`).textContent = compact(tokenCount);
+        const status = $(`#${arm}State`);
+        status.textContent = finished ? 'finished' : running ? 'running' : 'ready';
+        status.className = `live-dot ${finished ? 'finished' : running ? 'running' : ''}`;
+        const renderKey = `${lastIndex}:${finished ? 1 : 0}`;
+        if (!force && state.rendered[arm] === renderKey) {
+          updateWaiting(data, arm, finished);
+          return;
+        }
+        state.rendered[arm] = renderKey;
+        const stream = $(`#${arm}Stream`);
+        stream.innerHTML = visible.length ? renderEvents(data, visible) : `<div class="empty-stream">${arm === 'c2' ? 'Lessons loaded · ' : ''}waiting for first tool call</div>`;
+        if (finished) stream.insertAdjacentHTML('beforeend', verifierHtml(data));
+        updateWaiting(data, arm, finished);
+        if (!state.reducedMotion) requestAnimationFrame(() => { stream.scrollTop = stream.scrollHeight; });
+        else stream.scrollTop = stream.scrollHeight;
+      }
+
+      function updateWaiting(data, arm, finished) {
+        if (arm !== 'c2' || !finished) return;
+        const element = $('#c2Waiting');
+        if (element) element.innerHTML = state.time < state.left.duration_s ? `finished · waiting <strong>${formatDuration(Math.max(0, state.time - data.duration_s))}</strong> for C0` : 'finished · waited <strong>3m 47s</strong> for C0';
+      }
+
+      function renderEvents(data, visible) {
+        if (data.arm !== 'c0') return visible.map(eventHtml).join('');
+        const group = data.groups[0];
+        if (!group) return visible.map(eventHtml).join('');
+        const before = visible.filter(event => event.index < group.from);
+        const inside = visible.filter(event => event.index >= group.from && event.index <= group.to);
+        const after = visible.filter(event => event.index > group.to);
+        let html = before.map(eventHtml).join('');
+        if (inside.length) {
+          const counts = inside.reduce((acc, event) => (acc[event.tool] = (acc[event.tool] || 0) + 1, acc), {});
+          const duration = inside.length > 1 ? inside.at(-1).t - inside[0].t : 0;
+          html += `<button class="event-row group-row" data-group-toggle="true"><span class="tool-label"><span class="tool-glyph"></span>loop</span><span class="event-main"><span class="event-command"><span class="group-progress">${state.expandedGroup ? '▾' : '▸'} ×${counts.edit_file || 0} edit_file · ${counts.dbt || 0} dbt run</span> · ${escapeHtml(group.path)}</span><span class="event-result">${escapeHtml(group.label)} · click to ${state.expandedGroup ? 'collapse' : 'inspect'}</span></span><span class="event-time">${formatDuration(duration)}</span></button>`;
+          if (state.expandedGroup) html += `<div class="group-children">${inside.map(eventHtml).join('')}</div>`;
+        }
+        return html + after.map(eventHtml).join('');
+      }
+
+      function eventHtml(event) {
+        const command = eventSummary(event);
+        const result = resultSummary(event.result);
+        return `<button class="event-row tool-${escapeHtml(event.tool)}" data-arm="${event.index <= 999 ? '' : ''}" data-event-index="${event.index}" data-tool="${escapeHtml(event.tool)}"><span class="tool-label"><span class="tool-glyph"></span>${escapeHtml(shortTool(event.tool))}</span><span class="event-main"><span class="event-command">${escapeHtml(command)}</span>${result ? `<span class="event-result ${event.ok ? '' : 'error'}">${event.ok ? '→' : '×'} ${escapeHtml(result)}</span>` : ''}</span><span class="event-time">${formatClock(event.t)}</span></button>`;
+      }
+
+      function shortTool(tool) { return ({read_file:'read', write_file:'write', edit_file:'edit', run_sql:'sql'}[tool] || tool); }
+      function eventSummary(event) {
+        const input = event.input || {};
+        if (event.tool === 'bash') return input.command || 'shell command';
+        if (event.tool === 'run_sql') return String(input.query || 'SQL query').replace(/\s+/g, ' ');
+        if (event.tool === 'dbt') return `dbt ${input.command || ''}${input.select ? ` —select ${input.select}` : ''}`.trim();
+        if (['read_file','write_file','edit_file'].includes(event.tool)) return input.path || event.tool;
+        return Object.values(input)[0] || event.tool;
+      }
+      function resultSummary(value) { return String(value || '').replace(/\s+/g, ' ').slice(0, 180); }
+      function formatDuration(seconds) {
+        const rounded = Math.round(seconds);
+        return rounded >= 60 ? `${Math.floor(rounded / 60)}m ${String(rounded % 60).padStart(2, '0')}s` : `${rounded}s`;
+      }
+
+      function verifierHtml(data) {
+        const passed = data.verifier.official === 1;
+        return `<div class="verifier-card ${passed ? 'pass' : 'fail'}"><div class="verifier-top"><span><span class="verifier-score">${data.verifier.passed} / ${data.verifier.total}</span><span class="verifier-label">tests passed</span></span><span class="verifier-status">${passed ? 'PASS' : 'FAIL'}</span></div><div class="verifier-meta">${data.duration_s.toFixed(1)} s · ${data.totals.tool_calls} tools · ${data.tokens.total.toLocaleString()} tokens</div></div>${data.arm === 'c2' ? '<div class="waiting-line" id="c2Waiting">finished · waiting <strong>0s</strong> for C0</div>' : ''}`;
+      }
+
+      function linkedLessonIds() {
+        return new Set(state.links.filter(link => state.time >= (state.right.events.find(event => event.index === link.event)?.t ?? Infinity)).map(link => link.lesson));
+      }
+
+      function renderLessonLines() {
+        const linked = linkedLessonIds();
+        const featured = ['L8', 'L16', 'L50'].map(id => state.right.lessons.find(lesson => lesson.id === id)).filter(Boolean);
+        $('#lessonLines').innerHTML = featured.map(lesson => `<span class="lesson-line ${linked.has(lesson.id) ? 'linked' : ''}"><span class="mark">${linked.has(lesson.id) ? '◆' : '·'}</span><span>${escapeHtml(lesson.trigger)}</span></span>`).join('') + '<span class="lesson-line"><span class="mark">·</span><span>7 more lessons</span></span>';
+      }
+
+      function renderLessons() {
+        const linked = linkedLessonIds();
+        $('#lessonCards').innerHTML = state.right.lessons.map((lesson, index) => {
+          const note = state.links.find(link => link.lesson === lesson.id)?.note;
+          return `<button class="lesson-card ${linked.has(lesson.id) ? 'linked' : ''}" data-lesson-index="${index}"><span class="lesson-advice"><span class="lesson-diamond">${linked.has(lesson.id) ? '◆' : '·'}</span><span>When ${escapeHtml(lesson.trigger)}<span class="advice-action">→ ${escapeHtml(lesson.action)}</span></span></span><span class="provenance"><span class="provenance-title">What the index stored</span>${note ? `<span class="provenance-row"><strong>Replay annotation:</strong> ${escapeHtml(note)}</span>` : ''}<span class="provenance-row"><strong>Learned from:</strong> ${escapeHtml(lesson.source_tasks.join(', '))}</span><span class="provenance-row"><strong>Lesson type:</strong> ${escapeHtml(lesson.lesson_type)}</span><span class="retrieval-text">${escapeHtml(lesson.retrieval_text)}</span></span></button>`;
+        }).join('');
+        $$('.lesson-card', $('#lessonCards')).forEach(card => card.addEventListener('click', () => card.classList.toggle('expanded')));
+      }
+
+      function streamClick(event) {
+        const group = event.target.closest('[data-group-toggle]');
+        if (group) { state.expandedGroup = !state.expandedGroup; state.rendered.c0 = -1; renderPane(state.left, 'c0', true); return; }
+        const row = event.target.closest('[data-event-index]');
+        if (!row) return;
+        const arm = row.closest('.pane').classList.contains('c0') ? 'c0' : 'c2';
+        const data = arm === 'c0' ? state.left : state.right;
+        const item = data.events.find(candidate => candidate.index === Number(row.dataset.eventIndex));
+        showEventDetail(item, arm);
+      }
+
+      function showEventDetail(event, arm) {
+        $('#detailModalTitle').textContent = `${arm.toUpperCase()} · ${event.tool} · ${formatClock(event.t)}`;
+        $('#detailBody').innerHTML = `<div class="event-detail-grid"><section class="detail-block"><h4>Model reasoning before this call</h4><pre>${escapeHtml(event.reasoning || 'No reasoning text recorded.')}</pre></section><section class="detail-block"><h4>Tool input</h4><pre>${escapeHtml(JSON.stringify(event.input, null, 2))}</pre></section><section class="detail-block"><h4>Tool result · ${event.latency.toFixed(2)} s</h4><pre>${escapeHtml(event.result || '(no output)')}</pre></section></div>`;
+        openLayer('detailModal');
+      }
+
+      function openLayer(id) {
+        const layer = document.getElementById(id);
+        state.lastFocus = document.activeElement;
+        layer.classList.add('open');
+        layer.querySelector('.close-button')?.focus();
+      }
+      function closeLayer(id) {
+        document.getElementById(id)?.classList.remove('open');
+        state.lastFocus?.focus?.();
+      }
+
+      async function toggleFullscreen() {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+        else await document.exitFullscreen?.();
+        const isFullscreen = Boolean(document.fullscreenElement);
+        $('#fullscreenButton').setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen');
+      }
+
+      function renderDiffPicker() {
+        const rightPaths = new Set(state.right.files_changed.map(file => file.path));
+        const shared = state.left.files_changed.map(file => file.path).filter(path => rightPaths.has(path));
+        shared.sort((a, b) => (a.includes('fct_session_quality') ? -1 : 0) - (b.includes('fct_session_quality') ? -1 : 0));
+        $('#diffFile').innerHTML = shared.map(path => `<option value="${escapeHtml(path)}">${escapeHtml(path)}</option>`).join('');
+      }
+
+      function renderDiff() {
+        const path = $('#diffFile').value;
+        const left = state.left.files_changed.find(file => file.path === path)?.after || '';
+        const right = state.right.files_changed.find(file => file.path === path)?.after || '';
+        $('#diffView').innerHTML = lineDiff(left, right).map(item => {
+          const sign = item.type === 'add' ? '+' : item.type === 'remove' ? '−' : ' ';
+          return `<div class="diff-line ${item.type}"><span class="diff-num">${item.left || ''}</span><span class="diff-num">${item.right || ''}</span><span class="diff-sign">${sign}</span><span class="diff-code">${escapeHtml(item.text || ' ')}</span></div>`;
+        }).join('');
+      }
+
+      function lineDiff(leftText, rightText) {
+        const a = leftText.split('\n'), b = rightText.split('\n');
+        const dp = Array.from({length: a.length + 1}, () => new Uint16Array(b.length + 1));
+        for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i+1][j+1] + 1 : Math.max(dp[i+1][j], dp[i][j+1]);
+        const result = []; let i = 0, j = 0;
+        while (i < a.length || j < b.length) {
+          if (i < a.length && j < b.length && a[i] === b[j]) { result.push({type:'same', text:a[i], left:i+1, right:j+1}); i++; j++; }
+          else if (j < b.length && (i === a.length || dp[i][j+1] >= dp[i+1][j])) { result.push({type:'add', text:b[j], right:j+1}); j++; }
+          else { result.push({type:'remove', text:a[i], left:i+1}); i++; }
+        }
+        return result;
+      }
+
+      function keyboard(event) {
+        if (['INPUT','TEXTAREA','SELECT'].includes(event.target.tagName)) return;
+        if (event.key === 'Escape' && activeModal()) { closeLayer(activeModal().id); return; }
+        if (event.key === 'Tab' && activeModal()) { trapFocus(event, activeModal()); return; }
+        if (activeModal()) return;
+        if (event.key >= '1' && event.key <= '3') { showScreen(Number(event.key)); return; }
+        if (event.key === ' ') {
+          event.preventDefault();
+          if (state.screen === 1) startRace();
+          else if (state.screen === 2 && state.time >= state.left.duration_s) showScreen(3);
+          else if (state.screen === 2) togglePlay();
+        } else if (event.key === 'ArrowRight') { event.preventDefault(); stepEvent(1); }
+        else if (event.key === 'ArrowLeft') { event.preventDefault(); stepEvent(-1); }
+        else if (event.key === '[') stepBeat(-1);
+        else if (event.key === ']') stepBeat(1);
+      }
+
+      function trapFocus(event, layer) {
+        const focusable = $$('button:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex="-1"])', layer).filter(item => item.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0], last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

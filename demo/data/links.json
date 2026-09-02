@@ -1,0 +1,9 @@
+{
+  "dbt-web-session-analytics": {
+    "c2": [
+      { "event": 10, "lesson": "L8", "note": "schema set in one place only" },
+      { "event": 8, "lesson": "L16", "note": "reads one sample row before casting" },
+      { "event": 25, "lesson": "L50", "note": "checks 5029 and 2530 against the spec" }
+    ]
+  }
+}

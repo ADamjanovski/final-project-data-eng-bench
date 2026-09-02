@@ -1,0 +1,17 @@
+model:
+  id: openai.gpt-oss-120b-1:0
+  bedrock_region: us-east-1
+  context_window_limit: 131072
+  temperature: 0.2
+  reasoning_effort: medium
+  max_tokens: 16384
+  read_timeout: 600
+  request_attempts: 3
+
+run:
+  session_prefix: c0-gpt-oss-120b
+  max_invalid_tool_calls: 10
+  max_token_continuations: 5
+  max_text_tool_continuations: 10
+  output_file: runs/c0-gpt-oss-120b-medium-demo.jsonl
+  transcript_file: transcripts/c0-gpt-oss-120b-medium-demo.txt

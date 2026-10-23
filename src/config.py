@@ -17,6 +17,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 class ModelConfig:
     id: str
     bedrock_region: str
+    context_window_limit: int
     temperature: float
     reasoning_effort: str
     max_tokens: int
@@ -45,10 +46,20 @@ class TrainingConfig:
 
 
 @dataclass(frozen=True)
+class RagConfig:
+    embedding_model: str
+    dimension: int
+    bucket: str
+    index: str
+    top_k: int
+
+
+@dataclass(frozen=True)
 class Config:
     model: ModelConfig
     run: RunConfig
     training: TrainingConfig | None = None
+    rag: RagConfig | None = None
 
 
 def load_config(path: Path = DEFAULT_CONFIG_FILE) -> Config:
@@ -61,6 +72,7 @@ def load_config(path: Path = DEFAULT_CONFIG_FILE) -> Config:
             if "training" in values
             else None
         ),
+        rag=RagConfig(**values["rag"]) if "rag" in values else None,
     )
 
 

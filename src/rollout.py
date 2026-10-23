@@ -225,20 +225,32 @@ def execute_rollout(
     config: Config = CONFIG,
 ) -> tuple[Rollout, list[dict]]:
     rollout = Rollout(task=task)
-    with TaskEnv(task=task) as env:
-        agent = run_agent(env, rollout, lessons, config)
-        trajectory = agent.messages if agent is not None else []
+    trajectory = []
+    try:
+        with TaskEnv(task=task) as env:
+            agent = run_agent(env, rollout, lessons, config)
+            trajectory = agent.messages if agent is not None else []
 
-        try:
-            rollout.official, rollout.counts, verifier_log = run_verifier(env, task)
-            rollout.verifier_feedback = summarize_verifier_log(verifier_log)
-        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-            verifier_error = f"verifier: {type(exc).__name__}: {exc}"
-            rollout.error = (
-                f"{rollout.error}; {verifier_error}"
-                if rollout.error
-                else verifier_error
-            )
+            try:
+                rollout.official, rollout.counts, verifier_log = run_verifier(
+                    env,
+                    task,
+                )
+                rollout.verifier_feedback = summarize_verifier_log(verifier_log)
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                verifier_error = f"verifier: {type(exc).__name__}: {exc}"
+                rollout.error = (
+                    f"{rollout.error}; {verifier_error}"
+                    if rollout.error
+                    else verifier_error
+                )
+    except Exception as exc:
+        infrastructure_error = f"infra: {type(exc).__name__}: {exc}"
+        rollout.error = (
+            f"{rollout.error}; {infrastructure_error}"
+            if rollout.error
+            else infrastructure_error
+        )
 
     return rollout, trajectory
 

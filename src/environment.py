@@ -9,6 +9,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PROJECT = "/app/dbt_models_duckdb"
 NEW_PROJECT = "/app/dbt_project"
+TRANSFORMS_PROJECT = "/app/dbt_transforms"
+TRANSFORMS_PROJECT_MARKERS = (
+    f"DuckDB dbt project: `{TRANSFORMS_PROJECT}",
+    f"DuckDB project: `{TRANSFORMS_PROJECT}",
+    f"dbt project: `{TRANSFORMS_PROJECT}",
+    f"DuckDB: `{TRANSFORMS_PROJECT}",
+)
 DATABASE = "/app/database/retail.duckdb"
 QUERY_HELPER = Path(__file__).with_name("container") / "duckdb_query.py"
 MAX_OUTPUT_CHARS = 12_000
@@ -42,7 +49,13 @@ class TaskEnv:
         if not task_dir.is_dir():
             raise ValueError(f"unknown task: {self.task}")
         self.meta = tomllib.loads((task_dir / "task.toml").read_text())
-        self.project = NEW_PROJECT if NEW_PROJECT in self.instruction else PROJECT
+        instruction = self.instruction
+        if NEW_PROJECT in instruction:
+            self.project = NEW_PROJECT
+        elif any(marker in instruction for marker in TRANSFORMS_PROJECT_MARKERS):
+            self.project = TRANSFORMS_PROJECT
+        else:
+            self.project = PROJECT
 
     @property
     def task_dir(self) -> Path:
@@ -102,6 +115,56 @@ class TaskEnv:
             raise RuntimeError(f"container start failed: {result.stderr.strip()}")
 
         try:
+            if self.project == TRANSFORMS_PROJECT:
+                exists = subprocess.run(
+                    [
+                        "docker",
+                        "exec",
+                        self.container,
+                        "test",
+                        "-e",
+                        TRANSFORMS_PROJECT,
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if exists.returncode != 0:
+                    move = subprocess.run(
+                        [
+                            "docker",
+                            "exec",
+                            self.container,
+                            "mv",
+                            PROJECT,
+                            TRANSFORMS_PROJECT,
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if move.returncode != 0:
+                        raise RuntimeError(
+                            f"could not create project {TRANSFORMS_PROJECT}: "
+                            f"{move.stderr.strip()}"
+                        )
+                    link = subprocess.run(
+                        [
+                            "docker",
+                            "exec",
+                            self.container,
+                            "ln",
+                            "-s",
+                            TRANSFORMS_PROJECT,
+                            PROJECT,
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if link.returncode != 0:
+                        raise RuntimeError(
+                            f"could not create project alias {PROJECT}: "
+                            f"{link.stderr.strip()}"
+                        )
+
             if self.project == NEW_PROJECT:
                 symlink = subprocess.run(
                     ["docker", "exec", self.container, "test", "-L", NEW_PROJECT],
@@ -120,7 +183,11 @@ class TaskEnv:
                         f"could not create project {NEW_PROJECT}: {mkdir.stderr.strip()}"
                     )
 
-            aliases = ["/app/dbt_transforms"]
+            aliases = (
+                []
+                if self.project == TRANSFORMS_PROJECT
+                else [TRANSFORMS_PROJECT]
+            )
             if self.project == PROJECT:
                 aliases.append(NEW_PROJECT)
 

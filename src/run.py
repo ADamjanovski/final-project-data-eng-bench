@@ -12,6 +12,8 @@ from src.agents.observation import (
     record_rollout,
 )
 from src.rollout import Rollout, run_rollout
+from src.training_free_grpo.notebook import format_notebook, load_notebook
+from src.training_free_grpo.rag import build_clients, retrieve_lessons
 from src.transcript import write_rollout, write_run_summary
 
 
@@ -25,7 +27,18 @@ def main() -> int:
     config = load_config(args.config)
     run_config = config.run
     tasks = args.tasks or (PROJECT_ROOT / "splits/test.txt").read_text().split()
-    lessons = args.lessons_file.read_text() if args.lessons_file else None
+    lessons = None
+    if args.lessons_file:
+        try:
+            lessons = format_notebook(load_notebook(args.lessons_file))
+        except (OSError, TypeError, ValueError, KeyError) as exc:
+            parser.error(f"invalid lessons file: {exc}")
+        if not lessons:
+            parser.error("lessons file contains no lessons")
+    if lessons and config.rag:
+        parser.error("--lessons-file cannot be used with RAG")
+
+    rag_clients = build_clients(config.model.bedrock_region) if config.rag else None
     output_path = Path(run_config.output_file)
     transcript_path = Path(run_config.transcript_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,18 +58,38 @@ def main() -> int:
                 instruction = (
                     PROJECT_ROOT / "tasks" / task / "instruction.md"
                 ).read_text()
+                task_lessons = lessons
+                if config.rag and rag_clients:
+                    bedrock, s3vectors = rag_clients
+                    retrieved = retrieve_lessons(
+                        bedrock,
+                        s3vectors,
+                        config.rag.bucket,
+                        config.rag.index,
+                        instruction,
+                        config.rag,
+                    )
+                    task_lessons = format_notebook(retrieved)
+                    lesson_ids = ", ".join(
+                        lesson["id"] for lesson in retrieved
+                    )
+                    print(f"{task}: retrieved {lesson_ids or 'no lessons'}")
                 session, observation = create_rollout_observation(
                     langfuse,
                     session_id=session_id,
                     task=task,
                     instruction=instruction,
-                    lessons=lessons,
+                    lessons=task_lessons,
                     model=config.model.id,
                     temperature=config.model.temperature,
                 )
                 with session:
                     with observation as trace:
-                        rollout = run_rollout(task, lessons=lessons, config=config)
+                        rollout = run_rollout(
+                            task,
+                            lessons=task_lessons,
+                            config=config,
+                        )
                         record_rollout(langfuse, trace, rollout)
             except Exception as exc:
                 rollout = Rollout(

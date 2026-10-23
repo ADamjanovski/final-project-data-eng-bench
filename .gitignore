@@ -2,6 +2,7 @@
 jobs/
 runs/
 traces/
+demo/traces/
 *.log
 
 # Python

@@ -1,3 +1,20 @@
+import json
+
+
+TOOL_INPUT_EXAMPLES = {
+    "read_file": {"path": "models/example.sql"},
+    "write_file": {"path": "models/example.sql", "content": "select 1"},
+    "edit_file": {
+        "path": "models/example.sql",
+        "old_string": "old text",
+        "new_string": "new text",
+    },
+    "run_sql": {"query": "SELECT * FROM model_name LIMIT 10"},
+    "dbt": {"command": "run", "select": "model_name"},
+    "bash": {"command": "echo $DB_TYPE"},
+}
+
+
 SYSTEM_PROMPT = """\
 You are a senior analytics engineer working in a DuckDB dbt project inside a \
 container. Complete only the requirements in the ticket.
@@ -46,9 +63,18 @@ or finish if the task is complete. Invalid attempt {attempt} of {max_attempts}.
 """
 
 TEXT_TOOL_CALL_ERROR = """\
-Your last response wrote a call to the {tool_name} tool as text, so the tool did \
-not run. Call {tool_name} now with a structured tool call and valid JSON input. \
-Do not describe or print the tool call.
+REPAIR REQUIRED: your last response put a {tool_name} request in reasoning or \
+normal text. No tool ran.
+
+Repeat the same intended request now as one native structured tool call to the \
+registered {tool_name} tool. Reuse the argument values from your last response. \
+The input object must have this shape:
+
+{example}
+
+The call itself must be a toolUse block. Do not print the arguments in \
+reasoning, normal text, Markdown, XML, a code block, `tool_name=...`, or \
+`<analysis to=...>`. Do not explain the repair. Make the tool call now.
 """
 
 TOKEN_LIMIT_CONTINUATION = """\
@@ -103,4 +129,8 @@ def invalid_tool_call_error(
 
 
 def text_tool_call_error(tool_name: str) -> str:
-    return TEXT_TOOL_CALL_ERROR.format(tool_name=tool_name).strip()
+    example = json.dumps(TOOL_INPUT_EXAMPLES.get(tool_name, {}))
+    return TEXT_TOOL_CALL_ERROR.format(
+        tool_name=tool_name,
+        example=example,
+    ).strip()

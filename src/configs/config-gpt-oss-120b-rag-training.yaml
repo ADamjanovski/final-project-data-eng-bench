@@ -1,0 +1,32 @@
+model:
+  id: openai.gpt-oss-120b-1:0
+  bedrock_region: us-east-1
+  context_window_limit: 131072
+  temperature: 0.7
+  reasoning_effort: medium
+  max_tokens: 8192
+  read_timeout: 600
+  request_attempts: 3
+
+run:
+  session_prefix: rag-training-gpt-oss-120b
+  max_invalid_tool_calls: 3
+  max_token_continuations: 2
+  max_text_tool_continuations: 5
+  output_file: runs/rag-training-gpt-oss-120b/rollouts.jsonl
+  transcript_file: transcripts/rag-training-gpt-oss-120b.txt
+
+training:
+  epochs: 2
+  rollouts_per_task: 2
+  tasks_per_batch: 7
+  seed: 42
+  experience_temperature: 0.0
+  max_lessons_per_task: 3
+
+rag:
+  embedding_model: amazon.titan-embed-text-v2:0
+  dimension: 1024
+  bucket: training-free-grpo
+  index: rag-training-gpt-oss-120b
+  top_k: 10
